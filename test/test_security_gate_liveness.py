@@ -356,7 +356,15 @@ def _url_payload_command(n: int) -> str:
 #: ``_approved_oauth_authorization_endpoint`` and the facade export. The rationale
 #: lives in the security spec, not the package. An approved endpoint gets exactly
 #: the builtin set's exemption; no pattern, threshold or pass moved.
-_PACKAGE_LINE_BUDGET = 29_492
+#:
+#: Raised again, from 29,492, for ``rm_floor``: the argv floor that reads a
+#: recursive-force ``rm`` in any flag or home spelling against the root or home dir
+#: itself, cut on the shared ``_iter_shell_chars`` and unquoted with the shared
+#: ``_shell_tokens`` (no quote reader of its own), skipping comments and heredoc
+#: bodies, walking each ``$(…)`` body on its own and an array's elements as data,
+#: never reading a redirection target or a quoted ``*`` as an operand, and its
+#: gated branch at the end of ``is_denied``. No pattern moved.
+_PACKAGE_LINE_BUDGET = 29_782
 
 #: Ceiling on any ONE file in the package. This is what the bound is really for --
 #: a package total says nothing about a single file growing back into a second
