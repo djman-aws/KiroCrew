@@ -94,6 +94,7 @@ from kiro_crew.vector_memory_constants import (
     _MAX_SEMANTIC_PER_CONSOLIDATION,
     _SEMANTIC_PROMPT_CAP_PER_CONSOLIDATION,
 )
+from kiro_crew.warm_task_brief_contract import is_warm_task_brief_message
 
 if TYPE_CHECKING:
     from kiro_crew.history import CacheIdentity, ConversationLog
@@ -1151,6 +1152,7 @@ _BOUND_FOR_IMPORTERS = (
     extracted_lesson_applies,
     frontmatter_value,
     hashlib,
+    is_warm_task_brief_message,
     json,
     math,
     os,
