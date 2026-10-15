@@ -266,7 +266,7 @@ class IngestionGate:
 #   e2e gateway.
 # * ``dev_mode_arms_strict=False`` keeps a developer gateway from raising on that
 #   same backlog, which would report tracked work as a regression and push the
-#   developer to unset ``KIROCREW_DEV_MODE`` -- silencing history.py's guard too.
+#   developer to unset ``KIROCREW_DEV_MODE`` -- silencing history_offload.py's guard too.
 #
 # When that baseline is empty, delete both arguments and this store joins
 # the shared switch.
