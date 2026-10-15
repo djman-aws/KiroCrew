@@ -226,9 +226,11 @@ from kiro_crew.config.sections_dashboard import (  # noqa: F401
     normalize_verbosity,
 )
 from kiro_crew.config.sections_dashboard_hosts import (  # noqa: F401
+    _BITBUCKET_CLOUD_HOSTS,
     _BROWSER_LOCAL_HOSTS,
     _GITHUB_PUBLIC_HOSTS,
     _GITLAB_HOST_NAME_RE,
+    _coerce_bitbucket_server_hosts,
     _coerce_github_hosts,
     _coerce_gitlab_hosts,
     _coerce_jira_hosts,
