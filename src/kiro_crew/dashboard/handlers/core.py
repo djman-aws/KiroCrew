@@ -4217,14 +4217,17 @@ async def api_shutdown(request: web.Request) -> web.Response:
     exits the process.
 
     Intended for the desktop app to call before installing an auto-update, so
-    the Squirrel bundle swap never races a live gateway. Requires loopback +
-    the local secret (same auth as ``/api/token/local`` and ``/api/logout``)
-    so a web page cannot trigger a shutdown.
+    the Squirrel bundle swap never races a live gateway. Requires loopback (or a
+    kernel-attested same-user AF_UNIX peer, ``_unix_peer_is_self``, which is how
+    ``kirocrew stop``'s owner-verified socket send arrives, with an empty
+    ``request.remote``) plus the local secret (same auth as
+    ``/api/token/local`` and ``/api/logout``) so a web page cannot trigger a
+    shutdown.
     """
     import kiro_crew.dashboard.handlers as _h  # noqa: F811
     from kiro_crew import shutdown_event  # noqa: F811
 
-    if not _h.is_loopback(request.remote or ""):
+    if not _h.is_loopback(request.remote or "") and not _unix_peer_is_self(request):
         _sel().log_api_access(
             caller=request.remote or "unknown",
             operation="shutdown",

@@ -35,6 +35,11 @@ from kiro_crew.platform.update_layout import InstallLayout
 from kiro_crew.service import linux as svc_linux
 from kiro_crew.service import macos as svc_macos
 from kiro_crew.service.common import Platform, RestartReport
+from kiro_crew.testing.wait import wait_until
+
+# Some classes route the owner-verified transport to a stub via an autouse
+# fixture; tests that assert on the real helper restore it from here.
+_REAL_OWNER_VERIFIED_SECRET_URLOPEN = cli_server._owner_verified_secret_urlopen
 
 
 class _SelRecorder:
@@ -61,8 +66,9 @@ def sel_rec(monkeypatch):
 class _Resp:
     """Minimal ``urlopen`` result usable as a context manager."""
 
-    def __init__(self, payload: bytes) -> None:
+    def __init__(self, payload: bytes, status: int = 200) -> None:
         self._payload = payload
+        self.status = status
 
     def read(self, n: int = -1) -> bytes:
         return self._payload if n is None or n < 0 else self._payload[:n]
@@ -340,10 +346,10 @@ class TestPortOwnershipGuard:
         assert "Gateway not running" not in out
 
     def test_shutdown_never_consults_ownership_and_reaches_the_secret(self, monkeypatch) -> None:
-        # The authenticated-shutdown fallback does NOT apply the ownership gate:
-        # the argv-declined arm already proved identity and the empty-lookup arm
-        # is an intentionally unverified fallback. Ownership must never be
-        # consulted on this path, on any platform.
+        # The authenticated-shutdown fallback applies no port-lookup pre-check
+        # (the empty-lookup arm runs exactly when that lookup cannot be
+        # trusted); its proof is the connection-bound one inside the send
+        # helper, routed to a stub here by the class fixture.
         read = MagicMock(return_value="s3cr3t")
         resp = MagicMock(status=200)
         resp.read.return_value = b'{"ok": true, "shutting_down": true}'
@@ -357,6 +363,91 @@ class TestPortOwnershipGuard:
         monkeypatch.setattr(cli_server, "loopback_urlopen", lambda *a, **k: ctx)
         assert cli_server._request_gateway_shutdown(5476) is True
         read.assert_called_once()
+
+    @pytest.mark.skipif(
+        not hasattr(__import__("socket"), "AF_UNIX"),
+        reason="drives the AF_UNIX peer-verified shutdown send; AF_UNIX-only",
+    )
+    def test_shutdown_rides_the_peer_verified_socket_when_it_exists(
+        self, monkeypatch, tmp_path, sel_rec
+    ) -> None:
+        # With the owner-only socket present, the shutdown secret must go
+        # over it with the connection-bound peer proof -- no port tool needed, so
+        # the fallback is not deleted -- and never over plain loopback TCP.
+        from kiro_crew.mcp_gateway.socketsec import PeerCredResult
+
+        monkeypatch.setattr(
+            cli_server, "_owner_verified_secret_urlopen", _REAL_OWNER_VERIFIED_SECRET_URLOPEN
+        )
+        sock_file = tmp_path / "gw.sock"
+        sock_file.write_bytes(b"")
+        monkeypatch.setattr(cli_server, "dashboard_socket_path", lambda _p: sock_file)
+        monkeypatch.setattr(cli_server, "read_local_secret", lambda _port, **_kw: "s3cr3t")
+        monkeypatch.setattr(
+            cli_server, "loopback_urlopen", lambda *a, **k: pytest.fail("unverified TCP send")
+        )
+        monkeypatch.setattr(cli_server, "check_peer_is_self", lambda _s: PeerCredResult.MATCH)
+        verdict = {"ours": True}
+        monkeypatch.setattr(
+            cli_server, "_connected_unix_peer_is_recorded_gateway", lambda _s, _p: verdict["ours"]
+        )
+        sent: list[tuple[str, str]] = []
+
+        def _unix(req, timeout, *, socket_path, verify_peer):
+            verify_peer(object())  # connected-socket proof, before any byte
+            sent.append((socket_path, req.headers.get("X-local-secret")))
+            return _Resp(b'{"ok": true, "shutting_down": true}')
+
+        monkeypatch.setattr(cli_server, "unix_socket_urlopen", _unix)
+
+        assert cli_server._request_gateway_shutdown(5476) is True
+        assert sent == [(str(sock_file), "s3cr3t")]
+
+        # A same-user peer that is not the recorded gateway: refused, nothing
+        # sent, and the caller gets False (its no-target diagnostic), not a crash.
+        sent.clear()
+        verdict["ours"] = False
+        assert cli_server._request_gateway_shutdown(5476) is False
+        assert sent == []
+        denied = [c for c in sel_rec.calls if c.get("outcome") == "denied"]
+        assert denied and denied[-1]["operation"] == "gateway_stop"
+
+    def test_shutdown_without_a_socket_needs_the_tcp_peer_proof(
+        self, monkeypatch, tmp_path, sel_rec
+    ) -> None:
+        # No owner-only socket (TCP-only gateway, native Windows): the secret
+        # rides loopback TCP only with the connection-bound proof. A listener
+        # that is not the recorded gateway -- a co-resident on a stale port --
+        # gets nothing, and the caller sees False.
+        monkeypatch.setattr(
+            cli_server, "_owner_verified_secret_urlopen", _REAL_OWNER_VERIFIED_SECRET_URLOPEN
+        )
+        monkeypatch.setattr(
+            cli_server, "dashboard_socket_path", lambda _p: tmp_path / "absent.sock"
+        )
+        monkeypatch.setattr(cli_server, "read_local_secret", lambda _port, **_kw: "s3cr3t")
+        monkeypatch.setattr(
+            cli_server, "loopback_urlopen", lambda *a, **k: pytest.fail("unverified TCP send")
+        )
+        verdict = {"v": cli_server._ConnectedPeerVerdict.MISMATCH}
+        monkeypatch.setattr(cli_server, "_connected_peer_verdict", lambda _s: verdict["v"])
+        sent: list[str] = []
+
+        def _tcp(req, timeout, *, verify_peer):
+            verify_peer(object())  # connected-socket proof, before any byte
+            sent.append(req.headers.get("X-local-secret"))
+            return _Resp(b'{"ok": true, "shutting_down": true}')
+
+        monkeypatch.setattr(cli_server, "tcp_verified_urlopen", _tcp)
+
+        assert cli_server._request_gateway_shutdown(5476) is False
+        assert sent == []
+        denied = [c for c in sel_rec.calls if c.get("outcome") == "denied"]
+        assert denied and denied[-1]["operation"] == "gateway_stop"
+
+        verdict["v"] = cli_server._ConnectedPeerVerdict.MATCH
+        assert cli_server._request_gateway_shutdown(5476) is True
+        assert sent == ["s3cr3t"]
 
     @pytest.fixture
     def secret_home(self, monkeypatch, tmp_path):
@@ -905,7 +996,6 @@ class TestOwnerVerifiedSecretTransport:
         # gateway presents. Proves the MATCH path works end to end, then flips the
         # recorded pid to prove a foreign peer is refused.
         import socket
-        import time
 
         import kiro_crew.cli_server as cs
         from kiro_crew.instances import run_marker
@@ -946,15 +1036,19 @@ class TestOwnerVerifiedSecretTransport:
 
             # On a resolvable host (Linux /proc, Windows GetExtendedTcpTable) the
             # resolver needs the accepted connection to be visible in the kernel
-            # table; a freshly-accepted loopback pair is normally there at once,
-            # but spin briefly so the test is not a flake on a slow host.
-            verdict = None
-            for _ in range(50):
-                verdict = cs._connected_peer_verdict(client)
-                if verdict is cs._ConnectedPeerVerdict.MATCH:
-                    break
-                time.sleep(0.02)
-            assert verdict is cs._ConnectedPeerVerdict.MATCH
+            # table. Wait for that fixture readiness first, so the verdict
+            # below runs with its shipped resolve budget unchanged.
+            cli_end = client.getsockname()[:2]
+            gateway_end = client.getpeername()[:2]
+            wait_until(
+                lambda: platform_compat.get_tcp_peer_pid(
+                    server_endpoint=(str(cli_end[0]), int(cli_end[1])),
+                    client_endpoint=(str(gateway_end[0]), int(gateway_end[1])),
+                )
+                is not None,
+                describe=lambda: f"kernel table never listed {gateway_end}->{cli_end}",
+            )
+            assert cs._connected_peer_verdict(client) is cs._ConnectedPeerVerdict.MATCH
 
             # Record a pid that is not this process: the same live connection,
             # resolving to this pid, fails to match the record -> fail-closed
@@ -2624,29 +2718,36 @@ class TestUpdateGatewayPoke:
     never raise and never change the exit code.
     """
 
-    def test_success_reports_the_refresh(self, monkeypatch, capsys) -> None:
-        monkeypatch.setattr(cli_server, "resolve_client_port", lambda _p: 8674)
-        monkeypatch.setattr(cli_server, "_gateway_owns_port", lambda port: True)
-        monkeypatch.setattr(cli_server, "read_local_secret", lambda port, dial_host: "s3cret")
-
+    @staticmethod
+    def _resp(status: int = 200):
         class _Resp:
-            status = 200
-
             def __enter__(self):
                 return self
 
             def __exit__(self, *a):
                 return False
 
+        r = _Resp()
+        r.status = status
+        return r
+
+    def test_success_reports_the_refresh(self, monkeypatch, capsys) -> None:
+        monkeypatch.setattr(cli_server, "resolve_client_port", lambda _p: 8674)
+        monkeypatch.setattr(cli_server, "read_local_secret", lambda port, dial_host: "s3cret")
         captured: dict = {}
 
-        def _urlopen(req, timeout=0):
+        def _send(req, port, timeout, *, operation):
             captured["url"] = req.full_url
             captured["method"] = req.get_method()
             captured["secret"] = req.headers.get("X-local-secret")
-            return _Resp()
+            captured["port"] = port
+            captured["operation"] = operation
+            return self._resp()
 
-        monkeypatch.setattr(cli_server, "loopback_urlopen", _urlopen)
+        monkeypatch.setattr(cli_server, "_owner_verified_secret_urlopen", _send)
+        monkeypatch.setattr(
+            cli_server, "loopback_urlopen", lambda *a, **k: pytest.fail("unverified send")
+        )
         cli_server._revalidate_gateway_update_check()
         assert "Update badge refreshed" in capsys.readouterr().out
         # Pin the wire contract: dropping the secret header or retargeting the
@@ -2654,31 +2755,53 @@ class TestUpdateGatewayPoke:
         assert captured["url"] == "http://127.0.0.1:8674/api/update/revalidate"
         assert captured["method"] == "POST"
         assert captured["secret"] == "s3cret"
+        assert captured["port"] == 8674
+        assert captured["operation"] == "gateway_update_revalidate"
 
-    def test_unowned_port_sends_no_secret(self, monkeypatch, capsys) -> None:
-        """A port this gateway does not own must never receive the local secret.
+    def test_owned_port_with_a_foreign_connected_peer_sends_no_secret(
+        self, monkeypatch, capsys, tmp_path, sel_rec
+    ) -> None:
+        """The port check passing is not enough: the CONNECTED peer must be ours.
 
-        Guards the escalation where a co-resident listener on a stale configured
-        port would otherwise be handed the shared secret the real gateway accepts.
+        The attest-then-send race: the gateway dies after a port-owner
+        check and a co-resident listener binds the freed port before the send
+        connects. The proof must run on the connection that carries the secret,
+        so a foreign peer on that connection is refused before any byte.
         """
         monkeypatch.setattr(cli_server, "resolve_client_port", lambda _p: 8674)
-        monkeypatch.setattr(cli_server, "_gateway_owns_port", lambda port: False)
-        reached: list[str] = []
+        monkeypatch.setattr(cli_server, "_gateway_owns_port", lambda port: True, raising=False)
+        monkeypatch.setattr(cli_server, "read_local_secret", lambda port, dial_host: "s3cret")
+        monkeypatch.setattr(
+            cli_server, "dashboard_socket_path", lambda _p: tmp_path / "absent.sock"
+        )
         monkeypatch.setattr(
             cli_server,
-            "read_local_secret",
-            lambda port, dial_host: reached.append("read") or "s3cret",
+            "_connected_peer_verdict",
+            lambda _s: cli_server._ConnectedPeerVerdict.MISMATCH,
         )
-        monkeypatch.setattr(cli_server, "loopback_urlopen", lambda *a, **k: reached.append("send"))
+        sent: list[object] = []
+
+        def _tcp(req, timeout, *, verify_peer):
+            verify_peer(object())  # runs on the connected socket, before any byte
+            sent.append(req)
+            return self._resp()
+
+        monkeypatch.setattr(cli_server, "tcp_verified_urlopen", _tcp)
+        monkeypatch.setattr(cli_server, "loopback_urlopen", lambda *a, **k: sent.append(a))
         cli_server._revalidate_gateway_update_check()  # must not raise
-        assert reached == [], "read or sent the secret to a port the gateway does not own"
+        assert sent == [], "sent the secret to an unproven connected peer"
+        assert "reconciles on next check" in capsys.readouterr().out
+        denied = [c for c in sel_rec.calls if c.get("outcome") == "denied"]
+        assert denied and denied[-1]["operation"] == "gateway_update_revalidate"
 
     def test_no_gateway_running_is_silent_success(self, monkeypatch, capsys) -> None:
         """No secret means no gateway to reach; the next boot re-checks anyway."""
         monkeypatch.setattr(cli_server, "resolve_client_port", lambda _p: 8674)
-        monkeypatch.setattr(cli_server, "_gateway_owns_port", lambda port: True)
         monkeypatch.setattr(cli_server, "read_local_secret", lambda port, dial_host: "")
         called: list[bool] = []
+        monkeypatch.setattr(
+            cli_server, "_owner_verified_secret_urlopen", lambda *a, **k: called.append(True)
+        )
         monkeypatch.setattr(cli_server, "loopback_urlopen", lambda *a, **k: called.append(True))
         cli_server._revalidate_gateway_update_check()  # must not raise
         assert called == [], "attempted a call with no secret to authenticate it"
@@ -2686,13 +2809,24 @@ class TestUpdateGatewayPoke:
     def test_transport_failure_is_swallowed(self, monkeypatch, capsys) -> None:
         """A gateway that refuses the connection must not fail the update."""
         monkeypatch.setattr(cli_server, "resolve_client_port", lambda _p: 8674)
-        monkeypatch.setattr(cli_server, "_gateway_owns_port", lambda port: True)
         monkeypatch.setattr(cli_server, "read_local_secret", lambda port, dial_host: "s3cret")
 
-        def _boom(req, timeout=0):
+        def _boom(req, port, timeout, *, operation):
             raise urllib.error.URLError("connection refused")
 
-        monkeypatch.setattr(cli_server, "loopback_urlopen", _boom)
+        monkeypatch.setattr(cli_server, "_owner_verified_secret_urlopen", _boom)
+        cli_server._revalidate_gateway_update_check()  # must not raise
+        assert "reconciles on next check" in capsys.readouterr().out
+
+    def test_peer_refusal_is_swallowed(self, monkeypatch, capsys) -> None:
+        """A refused peer is a best-effort miss, not a crash: the update stands."""
+        monkeypatch.setattr(cli_server, "resolve_client_port", lambda _p: 8674)
+        monkeypatch.setattr(cli_server, "read_local_secret", lambda port, dial_host: "s3cret")
+
+        def _refuse(req, port, timeout, *, operation):
+            raise cli_server._GatewayPeerRefused("peer not proven")
+
+        monkeypatch.setattr(cli_server, "_owner_verified_secret_urlopen", _refuse)
         cli_server._revalidate_gateway_update_check()  # must not raise
         assert "reconciles on next check" in capsys.readouterr().out
 

@@ -22,8 +22,12 @@ import pytest
 from kiro_crew import platform_compat
 from kiro_crew.cli_commands import _cron
 from kiro_crew.cli_doctor import _doctor
-from kiro_crew.cli_server import _owner_verified_secret_urlopen as _REAL_OWNER_VERIFIED_SECRET_URLOPEN
-from kiro_crew.cli_server import _update
+from kiro_crew.cli_server import (
+    _owner_verified_secret_urlopen as _REAL_OWNER_VERIFIED_SECRET_URLOPEN,
+)
+from kiro_crew.cli_server import (
+    _update,
+)
 from kiro_crew.service.common import RestartReport
 from kiro_crew.stt import decoder as stt_decoder
 
@@ -8990,7 +8994,7 @@ class TestOwnerVerifiedSecretTransport:
         monkeypatch.setattr(
             "kiro_crew.cli_server.dashboard_socket_path", lambda _p: tmp_path / "absent.sock"
         )
-        verify = self._capture_tcp_verifier(monkeypatch, operation="gateway_update_revalidate")
+        verify = self._capture_tcp_verifier(monkeypatch, operation="gateway_update_approve")
 
         monkeypatch.setattr(
             cli_server, "_connected_peer_verdict", lambda _s: cli_server._ConnectedPeerVerdict.MATCH
@@ -9011,7 +9015,7 @@ class TestOwnerVerifiedSecretTransport:
             verify(object())
 
         assert [c["outcome"] for c in _sel_calls] == ["allowed", "denied"]
-        assert all(c["operation"] == "gateway_update_revalidate" for c in _sel_calls)
+        assert all(c["operation"] == "gateway_update_approve" for c in _sel_calls)
         assert "connected_peer_verified" in _sel_calls[0]["resources"]
         assert "connected_peer_unverified" in _sel_calls[1]["resources"]
 
@@ -9258,7 +9262,7 @@ class TestOwnerVerifiedSecretTransport:
 
         cli_server._update_approve()
 
-        assert sent == [(7777, "gateway_update_revalidate", "sek")]
+        assert sent == [(7777, "gateway_update_approve", "sek")]
 
     def test_update_approve_surfaces_the_peer_refusal(self, monkeypatch, capsys):
         """A live gateway whose connected peer is refused is NOT "not running"."""
