@@ -11603,6 +11603,11 @@
       },
       "toolCallLine": {
         "diff_truncated": "diff काट दिया गया",
+        "edit_count_one": "{{count}} संपादन",
+        "edit_count_other": "{{count}} संपादन",
+        "edit_n_of_m": "{{total}} में से संपादन {{n}}",
+        "approved_tag": "स्वीकृत",
+        "approved_tag_tip": "अनुमति अनुरोध पर स्वीकृत, इसलिए इसकी अपनी अलग पंक्ति है",
         "aria_awaiting_approval": "टूल के लिए स्वीकृति की प्रतीक्षा: {{label}}",
         "aria_hide_details": "टूल के लिए विवरण छिपाएँ: {{label}}",
         "aria_show_details": "टूल के लिए विवरण दिखाएँ: {{label}}",

@@ -11603,6 +11603,11 @@
       },
       "toolCallLine": {
         "diff_truncated": "Diff gekürzt",
+        "edit_count_one": "{{count}} Bearbeitung",
+        "edit_count_other": "{{count}} Bearbeitungen",
+        "edit_n_of_m": "Bearbeitung {{n}} von {{total}}",
+        "approved_tag": "Genehmigt",
+        "approved_tag_tip": "Bei einer Rückfrage genehmigt, daher in einer eigenen Zeile",
         "aria_awaiting_approval": "Warten auf Genehmigung für Werkzeug {{label}}",
         "aria_hide_details": "Details für Werkzeug {{label}} ausblenden",
         "aria_show_details": "Details für Werkzeug {{label}} anzeigen",

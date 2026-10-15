@@ -11778,6 +11778,12 @@
       },
       "toolCallLine": {
         "diff_truncated": "diff tronqué",
+        "edit_count_many": "{{count}} modifications",
+        "edit_count_one": "{{count}} modification",
+        "edit_count_other": "{{count}} modifications",
+        "edit_n_of_m": "Modification {{n}} sur {{total}}",
+        "approved_tag": "Approuvée",
+        "approved_tag_tip": "Approuvée lors d'une demande d'autorisation, elle a donc sa propre ligne",
         "aria_awaiting_approval": "En attente d’approbation pour l’outil : {{label}}",
         "aria_hide_details": "Masquer les détails de l’outil : {{label}}",
         "aria_show_details": "Afficher les détails de l’outil : {{label}}",

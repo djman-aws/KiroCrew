@@ -11428,6 +11428,10 @@
       },
       "toolCallLine": {
         "diff_truncated": "diff 已截断",
+        "edit_count_other": "{{count}} 处编辑",
+        "edit_n_of_m": "第 {{n}} 处编辑，共 {{total}} 处",
+        "approved_tag": "已批准",
+        "approved_tag_tip": "已在权限请求中批准，因此单独占一行",
         "aria_awaiting_approval": "等待批准工具：{{label}}",
         "aria_hide_details": "隐藏工具详情：{{label}}",
         "aria_show_details": "展开工具详情：{{label}}",

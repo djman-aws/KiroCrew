@@ -11428,6 +11428,10 @@
       },
       "toolCallLine": {
         "diff_truncated": "diff は切り詰められました",
+        "edit_count_other": "{{count}} 件の編集",
+        "edit_n_of_m": "編集 {{n}}/{{total}}",
+        "approved_tag": "承認済み",
+        "approved_tag_tip": "許可の確認で承認されたため、別の行に表示されます",
         "aria_awaiting_approval": "ツールの承認待ち: {{label}}",
         "aria_hide_details": "ツールの詳細を非表示: {{label}}",
         "aria_show_details": "ツールの詳細を表示: {{label}}",
