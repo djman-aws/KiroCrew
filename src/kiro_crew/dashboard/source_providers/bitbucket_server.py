@@ -70,7 +70,7 @@ _REVIEW_STATES = {"APPROVED": "APPROVED", "REVIEWED": "CHANGES_REQUESTED"}
 
 def host_token_name(host: str) -> str:
     """The per-host vault name for *host*: ``BITBUCKET_SERVER_TOKEN_<HEX>``."""
-    normalized = host.strip().lower().removesuffix(":443")
+    normalized = config_loader.normalize_jira_host(host)
     return f"{GLOBAL_TOKEN_NAME}_{normalized.encode().hex().upper()}"
 
 
@@ -82,6 +82,12 @@ def _vault_secret(name: str) -> str:
         logger.debug("Bitbucket Server token unavailable", exc_info=True)
         return ""
     return secret.reveal() if secret is not None else ""
+
+
+def _require_listed(host: str) -> None:
+    """Refuse *host* unless it is in the current Bitbucket Server allowlist."""
+    if host not in hosts._allowed_bitbucket_server_hosts():
+        raise SourceProviderError(f"{host} is not listed in dashboard.bitbucket_server_hosts.")
 
 
 def _resolve_token(host: str) -> str:
@@ -99,11 +105,32 @@ def _resolve_token(host: str) -> str:
     return ""
 
 
+def _token_secret_name(host: str) -> str:
+    """The vault name to tell the user about: the lone-host name, else per-host."""
+    if hosts._allowed_bitbucket_server_hosts() == frozenset({host}):
+        return GLOBAL_TOKEN_NAME
+    return host_token_name(host)
+
+
 def _setup_guidance(host: str) -> str:
+    name = _token_secret_name(host)
+    if name == GLOBAL_TOKEN_NAME:
+        # A lone listed host: one secret to store, so name only that one.
+        note = ""
+    else:
+        # The shared name serves only a lone listed host, so name it as the
+        # likely cause when a second host was added after it was stored.
+        note = f"; {GLOBAL_TOKEN_NAME} stops applying once a second host is listed"
     return (
         f"Bitbucket Server at {host} needs an HTTP access token with read access. "
-        f"Store it in Settings > Secrets as {host_token_name(host)}"
-        f" (or {GLOBAL_TOKEN_NAME} when it is the only listed host)."
+        f"Store it in Settings > Secrets as {name}{note}."
+    )
+
+
+def _replace_token_guidance(host: str) -> str:
+    return (
+        f"Replace {_token_secret_name(host)} in Settings > Secrets with a token "
+        "that has repository read access."
     )
 
 
@@ -139,8 +166,13 @@ class _Client:
         self.pr_api = f"{self.repo_api}/pull-requests/{ref.number}"
 
     async def get(self, url: str, *, cap: int) -> Any:
-        """GET one JSON document, mapping every failure to a provider error."""
+        """GET one JSON document, mapping every failure to a provider error.
+
+        The allowlist is re-read before each request, so once the operator
+        removes the host no further request in this fetch reaches it.
+        """
         host = self.ref.host
+        _require_listed(host)
         try:
             async with self.session.get(url, allow_redirects=False) as resp:
                 if resp.status in {401, 403}:
@@ -148,10 +180,12 @@ class _Client:
                         raise SourceProviderNotConfigured(_setup_guidance(host))
                     if resp.status == 401:
                         raise SourceProviderError(
-                            f"Bitbucket Server at {host} rejected the configured token."
+                            f"Bitbucket Server at {host} rejected the configured token. "
+                            f"{_replace_token_guidance(host)}"
                         )
                     raise SourceProviderError(
-                        f"The Bitbucket Server token for {host} cannot read this pull request."
+                        f"The Bitbucket Server token for {host} cannot read this pull request. "
+                        f"{_replace_token_guidance(host)}"
                     )
                 if resp.status == 404:
                     raise SourceProviderError(
@@ -159,7 +193,7 @@ class _Client:
                     )
                 if resp.status != 200:
                     raise SourceProviderError(
-                        f"Bitbucket Server at {host} returned HTTP {resp.status}."
+                        f"Bitbucket Server at {host} returned HTTP {resp.status}. Try again later."
                     )
                 body = await _shared.read_capped_response(resp, cap)
         except SourceProviderError:
@@ -353,7 +387,10 @@ def _comment_rows(client: _Client, activities: Any, partial: list[str]) -> list[
                     projection._as_dict(activity.get("commentAnchor")),
                     0,
                 )
-        elif action in _REVIEW_STATES and len(rows) < _MAX_COMMENTS:
+        elif action in _REVIEW_STATES:
+            if len(rows) >= _MAX_COMMENTS:
+                projection._mark_partial(partial, "review discussions")
+                continue
             rows.append(
                 {
                     "id": str(activity.get("id") or ""),
@@ -380,8 +417,7 @@ async def _with_client(ref: SourceRef, work: Callable[[_Client], Awaitable[_Resu
     host the operator removed since then is not contacted, and its token is not
     read, by a request already in flight.
     """
-    if ref.host not in hosts._allowed_bitbucket_server_hosts():
-        raise SourceProviderError(f"{ref.host} is not listed in dashboard.bitbucket_server_hosts.")
+    _require_listed(ref.host)
     token = await asyncio.to_thread(_resolve_token, ref.host)
     headers = {"Accept": "application/json"}
     if token:
