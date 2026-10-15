@@ -440,6 +440,23 @@ ceiling and a cut is on record it adds "Last pressure cut: decrease 42s ago
 (corroborated pressure: slow_keys,timeouts); signals: ..."). Only an exec cut
 is on record: a gate cut or pause lowers no exec cap.
 
+**The chat header shows a cut while it is in force.** `GET /api/spawn/adaptive`
+(below) returns, beside the snapshot, a `throttle` reading
+(`dashboard/handlers/spawn_resume.py::throttle_view`): whether a cut is in force,
+the execution cap and the spawn gate each as `{cap, configured, cut}` (the gate
+also carries `paused`), and `queued`, the work the last sample saw waiting for an
+execution slot. A cut is a cap below the value a fresh process starts it at --
+the execution cap below the policy's `exec_start` (the user's ceiling), the gate
+paused or below `gate_start` (`spawn_concurrency_initial`). A gate below its
+ceiling is not a cut, because the gate starts at its initial capacity and grows
+from there; a disabled controller and `fixed` mode answer `{"cut": false}`. The
+dashboard's chat header (`components/ConcurrencyCutChip.tsx`) polls it every
+15 s and, while `cut` holds, shows one chip naming the reduced cap and the queue,
+linked to the Tasks & capacity card, with a polite live region that announces
+the cut and not each move of the queued count. Next to it the open session gets a
+marker when its own subagent starts wait for a slot under a cut execution cap; a
+memory wait keeps the sidebar's memory wording instead.
+
 **A tool server is not the gateway process,** so that registry is empty there:
 `mcp_tools/spawn.py::_live_adaptive_state` falls back to `GET
 /api/spawn/adaptive` (`dashboard/handlers/spawn_resume.py`), which returns

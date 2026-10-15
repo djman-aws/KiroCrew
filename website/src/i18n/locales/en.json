@@ -5944,6 +5944,15 @@
       "moreCols": "more columns",
       "fewerRows": "fewer rows",
       "moreRows": "more rows"
+    },
+    "concurrencyCutChip": {
+      "exec_reduced": "Concurrency reduced to {{cap}} of {{configured}}",
+      "exec_reduced_queued": "Concurrency reduced to {{cap}} of {{configured}} · {{queued}} queued",
+      "gate_reduced": "Backend starts reduced to {{cap}} of {{configured}}",
+      "gate_paused": "Backend starts paused",
+      "hint": "The adaptive controller lowered concurrency under load. Queued work keeps its place and starts as slots free up. Open Tasks & capacity for details.",
+      "session_queued": "This session: {{queued}} queued",
+      "session_queued_hint": "Subagents this session started are waiting for an execution slot while concurrency is reduced."
     }
   },
   "hooks": {

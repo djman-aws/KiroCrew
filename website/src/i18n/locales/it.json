@@ -10197,6 +10197,15 @@
       "config_unavailable": "Impossibile leggere le impostazioni della dashboard",
       "config_unavailable_detail": "Ricarica la pagina per riprovare, oppure chiedi all’agente di verificare.",
       "load_failed": "Non è stato possibile caricare una parte della dashboard. Ricarica la pagina per riprovare."
+    },
+    "concurrencyCutChip": {
+      "exec_reduced": "Concorrenza ridotta a {{cap}} su {{configured}}",
+      "exec_reduced_queued": "Concorrenza ridotta a {{cap}} su {{configured}} · {{queued}} in coda",
+      "gate_reduced": "Avvii del backend ridotti a {{cap}} su {{configured}}",
+      "gate_paused": "Avvii del backend in pausa",
+      "hint": "Il controller adattivo ha ridotto la concorrenza sotto carico. Il lavoro in coda mantiene il suo posto e parte man mano che si liberano posti. Apri Attività e capacità per i dettagli.",
+      "session_queued": "Questa sessione: {{queued}} in coda",
+      "session_queued_hint": "I sottoagenti avviati da questa sessione attendono un posto di esecuzione finché la concorrenza è ridotta."
     }
   },
   "hooks": {

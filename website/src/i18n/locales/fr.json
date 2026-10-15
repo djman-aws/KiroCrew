@@ -10197,6 +10197,15 @@
       "config_unavailable": "Impossible de lire les paramètres du tableau de bord",
       "config_unavailable_detail": "Recharge la page pour réessayer, ou demande à l’agent d’examiner le problème.",
       "load_failed": "Une partie du tableau de bord n’a pas pu se charger. Recharge la page pour réessayer."
+    },
+    "concurrencyCutChip": {
+      "exec_reduced": "Concurrence réduite à {{cap}} sur {{configured}}",
+      "exec_reduced_queued": "Concurrence réduite à {{cap}} sur {{configured}} · {{queued}} en file d’attente",
+      "gate_reduced": "Démarrages du backend réduits à {{cap}} sur {{configured}}",
+      "gate_paused": "Démarrages du backend en pause",
+      "hint": "Le contrôleur adaptatif a réduit la concurrence sous la charge. Le travail en attente garde sa place et démarre à mesure que des emplacements se libèrent. Ouvrez Tâches et capacité pour les détails.",
+      "session_queued": "Cette session : {{queued}} en file d’attente",
+      "session_queued_hint": "Les sous-agents lancés par cette session attendent un emplacement d’exécution tant que la concurrence est réduite."
     }
   },
   "hooks": {

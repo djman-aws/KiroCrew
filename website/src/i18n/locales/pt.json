@@ -10197,6 +10197,15 @@
       "config_unavailable": "Não foi possível ler as configurações do painel",
       "config_unavailable_detail": "Recarregue a página para tentar novamente ou peça ao agente para verificar.",
       "load_failed": "Não foi possível carregar uma parte do painel. Recarregue a página para tentar novamente."
+    },
+    "concurrencyCutChip": {
+      "exec_reduced": "Concorrência reduzida para {{cap}} de {{configured}}",
+      "exec_reduced_queued": "Concorrência reduzida para {{cap}} de {{configured}} · {{queued}} na fila",
+      "gate_reduced": "Inícios de backend reduzidos para {{cap}} de {{configured}}",
+      "gate_paused": "Inícios de backend pausados",
+      "hint": "O controlador adaptativo reduziu a concorrência sob carga. O trabalho na fila mantém o seu lugar e começa à medida que os espaços são liberados. Abra Tarefas e capacidade para ver os detalhes.",
+      "session_queued": "Esta sessão: {{queued}} na fila",
+      "session_queued_hint": "Os subagentes iniciados por esta sessão aguardam um espaço de execução enquanto a concorrência está reduzida."
     }
   },
   "hooks": {

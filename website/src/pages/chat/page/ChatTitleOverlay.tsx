@@ -9,7 +9,7 @@ import { requestSlotReveal } from '../../../store/chatSlice'
 import { ChatHeaderMenu } from '../ChatHeaderMenu'
 import type { useSteerDelivery } from './turnActions'
 import { SELECTION_INERT_ATTR } from '../useSelectionInertOverlays'
-import InboundLinkChip from '../../../components/InboundLinkChip'
+import ChatHeaderChips from '../../../components/ChatHeaderChips'
 import { PinnedPrompt } from '..'
 import { pinCandidateKey } from '../usePinnedPrompt'
 import SessionTitleControl from '../SessionTitleControl'
@@ -150,7 +150,7 @@ export default function ChatTitleOverlay({
             />
           )}
           </div>
-        <InboundLinkChip slotKey={activeSlot} />
+        <ChatHeaderChips slotKey={activeSlot} />
         {/* Trailing controls grouped under a single ml-auto so multiple
             right-aligned items don't each absorb free space (two ml-auto
             siblings split the gap, parking the split icon mid-header). */}

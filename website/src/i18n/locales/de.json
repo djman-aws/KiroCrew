@@ -10055,6 +10055,15 @@
       "config_unavailable": "Die Dashboard-Einstellungen konnten nicht gelesen werden",
       "config_unavailable_detail": "Lade die Seite neu, um es erneut zu versuchen, oder bitte den Agenten, sich das anzusehen.",
       "load_failed": "Ein Teil des Dashboards konnte nicht geladen werden. Lade die Seite neu, um es erneut zu versuchen."
+    },
+    "concurrencyCutChip": {
+      "exec_reduced": "Parallelität auf {{cap}} von {{configured}} gesenkt",
+      "exec_reduced_queued": "Parallelität auf {{cap}} von {{configured}} gesenkt · {{queued}} in der Warteschlange",
+      "gate_reduced": "Backend-Starts auf {{cap}} von {{configured}} gesenkt",
+      "gate_paused": "Backend-Starts pausiert",
+      "hint": "Die adaptive Steuerung hat die Parallelität unter Last gesenkt. Wartende Arbeit behält ihren Platz und startet, sobald Plätze frei werden. Details unter „Aufgaben & Kapazität“.",
+      "session_queued": "Diese Sitzung: {{queued}} in der Warteschlange",
+      "session_queued_hint": "Von dieser Sitzung gestartete Subagenten warten auf einen Ausführungsplatz, solange die Parallelität gesenkt ist."
     }
   },
   "hooks": {

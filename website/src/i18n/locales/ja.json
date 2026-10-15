@@ -9913,6 +9913,15 @@
       "config_unavailable": "ダッシュボードの設定を読み込めませんでした",
       "config_unavailable_detail": "ページを再読み込みしてもう一度お試しいただくか、エージェントに調査を依頼してください。",
       "load_failed": "ダッシュボードの一部を読み込めませんでした。ページを再読み込みしてもう一度お試しください。"
+    },
+    "concurrencyCutChip": {
+      "exec_reduced": "並列数を {{configured}} 中 {{cap}} に削減",
+      "exec_reduced_queued": "並列数を {{configured}} 中 {{cap}} に削減 · {{queued}} 件待機中",
+      "gate_reduced": "バックエンドの起動を {{configured}} 中 {{cap}} に削減",
+      "gate_paused": "バックエンドの起動を一時停止中",
+      "hint": "負荷のため、アダプティブ制御が並列数を下げました。待機中の作業は順番を保ち、空きができ次第開始します。詳細は「タスクと処理能力」を開いてください。",
+      "session_queued": "このセッション: {{queued}} 件待機中",
+      "session_queued_hint": "並列数が下がっている間、このセッションが開始したサブエージェントは実行枠の空きを待っています。"
     }
   },
   "hooks": {

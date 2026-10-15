@@ -9913,6 +9913,15 @@
       "config_unavailable": "无法读取仪表板设置",
       "config_unavailable_detail": "请重新加载页面后重试，或请代理排查。",
       "load_failed": "仪表板的一部分未能加载。请重新加载页面后重试。"
+    },
+    "concurrencyCutChip": {
+      "exec_reduced": "并发已降至 {{cap}}/{{configured}}",
+      "exec_reduced_queued": "并发已降至 {{cap}}/{{configured}} · {{queued}} 个已排队",
+      "gate_reduced": "后端启动已降至 {{cap}}/{{configured}}",
+      "gate_paused": "后端启动已暂停",
+      "hint": "自适应控制器因负载降低了并发。排队的工作会保留位置，并在有空闲槽位时开始。打开“任务与容量”查看详情。",
+      "session_queued": "此会话：{{queued}} 个已排队",
+      "session_queued_hint": "并发降低期间，此会话启动的子代理正在等待执行槽位。"
     }
   },
   "hooks": {

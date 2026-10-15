@@ -9913,6 +9913,15 @@
       "config_unavailable": "대시보드 설정을 읽을 수 없습니다",
       "config_unavailable_detail": "페이지를 새로고침해 다시 시도하거나 에이전트에게 확인을 요청하세요.",
       "load_failed": "대시보드 일부를 불러오지 못했습니다. 페이지를 새로고침해 다시 시도하세요."
+    },
+    "concurrencyCutChip": {
+      "exec_reduced": "동시성이 {{configured}}개 중 {{cap}}개로 줄었습니다",
+      "exec_reduced_queued": "동시성이 {{configured}}개 중 {{cap}}개로 줄었습니다 · {{queued}}개 대기 중",
+      "gate_reduced": "백엔드 시작이 {{configured}}개 중 {{cap}}개로 줄었습니다",
+      "gate_paused": "백엔드 시작 일시 중지됨",
+      "hint": "부하로 인해 적응형 컨트롤러가 동시성을 낮췄습니다. 대기 중인 작업은 순서를 유지하며 슬롯이 비는 대로 시작됩니다. 자세한 내용은 작업 및 용량을 여세요.",
+      "session_queued": "이 세션: {{queued}}개 대기 중",
+      "session_queued_hint": "동시성이 낮아진 동안 이 세션이 시작한 서브에이전트가 실행 슬롯을 기다리고 있습니다."
     }
   },
   "hooks": {
