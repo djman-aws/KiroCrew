@@ -10199,13 +10199,14 @@
       "load_failed": "Non è stato possibile caricare una parte della dashboard. Ricarica la pagina per riprovare."
     },
     "concurrencyCutChip": {
-      "exec_reduced": "Concorrenza ridotta a {{cap}} su {{configured}}",
-      "exec_reduced_queued": "Concorrenza ridotta a {{cap}} su {{configured}} · {{queued}} in coda",
-      "gate_reduced": "Avvii del backend ridotti a {{cap}} su {{configured}}",
-      "gate_paused": "Avvii del backend in pausa",
-      "hint": "Il controller adattivo ha ridotto la concorrenza sotto carico. Il lavoro in coda mantiene il suo posto e parte man mano che si liberano posti. Apri Attività e capacità per i dettagli.",
+      "exec_reduced": "<0>Sotto carico:</0> <1>{{cap}} agenti su {{configured}} alla volta</1>",
+      "exec_reduced_queued": "<0>Sotto carico:</0> <1>{{cap}} agenti su {{configured}} alla volta · {{queued}} in coda</1>",
+      "gate_reduced": "<0>Sotto carico:</0> <1>{{cap}} avvii di agenti su {{configured}} alla volta</1>",
+      "gate_paused": "<0>Sotto carico:</0> <1>i nuovi agenti attendono di partire</1>",
+      "hint": "Finché il sistema è sotto carico, vengono eseguiti meno agenti alla volta. Il lavoro in attesa mantiene il suo posto e parte appena si libera spazio. Apri Attività e capacità per i dettagli.",
       "session_queued": "Questa sessione: {{queued}} in coda",
-      "session_queued_hint": "I sottoagenti avviati da questa sessione attendono un posto di esecuzione finché la concorrenza è ridotta."
+      "session_queued_hint": "Gli agenti avviati da questa sessione attendono un posto libero finché ne vengono eseguiti meno alla volta.",
+      "load_failed": "Impossibile leggere lo stato della concorrenza"
     }
   },
   "hooks": {

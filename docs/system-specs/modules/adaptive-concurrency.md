@@ -449,13 +449,29 @@ execution slot. A cut is a cap below the value a fresh process starts it at --
 the execution cap below the policy's `exec_start` (the user's ceiling), the gate
 paused or below `gate_start` (`spawn_concurrency_initial`). A gate below its
 ceiling is not a cut, because the gate starts at its initial capacity and grows
-from there; a disabled controller and `fixed` mode answer `{"cut": false}`. The
+from there. The Tasks & capacity card's "lowered" mark compares the gate with
+its ceiling instead, so a gate between its start value and its ceiling is
+lowered on the card and not cut in the chat header. A disabled controller and
+`fixed` mode answer `{"cut": false}`. The
 dashboard's chat header (`components/ConcurrencyCutChip.tsx`) polls it every
 15 s and, while `cut` holds, shows one chip naming the reduced cap and the queue,
 linked to the Tasks & capacity card, with a polite live region that announces
 the cut and not each move of the queued count. Next to it the open session gets a
 marker when its own subagent starts wait for a slot under a cut execution cap; a
-memory wait keeps the sidebar's memory wording instead.
+memory wait keeps the sidebar's memory wording instead. Both read the title row
+as a container (`@container/chathead`), so they step down with the pane, not the
+window: as the row narrows the chip's sentence gives way to "Under load: 2/8",
+then to "2/8", and the marker folds away (the subagent progress bar and the
+sidebar row still count the queue); a row that also holds the two-way
+channel-link chip steps down sooner and, narrowest, shows the gauge alone. The
+sentence stays the link's accessible name at every width. On a phone the title
+row is not rendered, so the top bar's overflow menu carries the cut as a row
+linking to the card, its trigger carries a dot, and the bar holds the live
+region. A read that fails twice renders through `ErrorNotice` on both
+surfaces, in place of the chip and the menu row: the last good reading is
+withheld once the failure is reported, so no surface shows numbers it cannot
+confirm (withheld while the dashboard is disconnected, which its offline
+banner covers).
 
 **A tool server is not the gateway process,** so that registry is empty there:
 `mcp_tools/spawn.py::_live_adaptive_state` falls back to `GET

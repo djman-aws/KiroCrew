@@ -10199,13 +10199,14 @@
       "load_failed": "No se pudo cargar una parte del panel. Recarga la página para volver a intentarlo."
     },
     "concurrencyCutChip": {
-      "exec_reduced": "Concurrencia reducida a {{cap}} de {{configured}}",
-      "exec_reduced_queued": "Concurrencia reducida a {{cap}} de {{configured}} · {{queued}} en cola",
-      "gate_reduced": "Arranques de backend reducidos a {{cap}} de {{configured}}",
-      "gate_paused": "Arranques de backend en pausa",
-      "hint": "El controlador adaptativo redujo la concurrencia por la carga. El trabajo en cola conserva su lugar y empieza a medida que se liberan espacios. Abre Tareas y capacidad para ver los detalles.",
+      "exec_reduced": "<0>Con carga:</0> <1>{{cap}} de {{configured}} agentes a la vez</1>",
+      "exec_reduced_queued": "<0>Con carga:</0> <1>{{cap}} de {{configured}} agentes a la vez · {{queued}} en cola</1>",
+      "gate_reduced": "<0>Con carga:</0> <1>{{cap}} de {{configured}} arranques de agente a la vez</1>",
+      "gate_paused": "<0>Con carga:</0> <1>los agentes nuevos esperan para empezar</1>",
+      "hint": "Se ejecutan menos agentes a la vez mientras el sistema está con carga. El trabajo en espera conserva su lugar y empieza en cuanto hay espacio. Abre Tareas y capacidad para ver los detalles.",
       "session_queued": "Esta sesión: {{queued}} en cola",
-      "session_queued_hint": "Los subagentes que inició esta sesión esperan un espacio de ejecución mientras la concurrencia está reducida."
+      "session_queued_hint": "Los agentes que inició esta sesión esperan un espacio libre mientras se ejecutan menos a la vez.",
+      "load_failed": "No se pudo leer el estado de la concurrencia"
     }
   },
   "hooks": {
