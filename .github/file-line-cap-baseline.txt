@@ -180,7 +180,6 @@
 3522 test/test_aws_control_app.py
 6303 test/test_aws_control_backup.py
 2170 test/test_aws_control_backup_composition_contract.py
-3322 test/test_aws_control_backup_retention.py
 4193 test/test_aws_control_routes.py
 3564 test/test_browser_cli_view.py
 2032 test/test_channel_folders.py
@@ -195,7 +194,6 @@
 2744 test/test_cli_server_more_coverage.py
 2182 test/test_cloud_microvm_engine.py
 2288 test/test_cloud_source.py
-3408 test/test_codex_session_mcp.py
 2685 test/test_compaction_stop_declined.py
 2106 test/test_computer_use_api.py
 2166 test/test_computer_use_snapshot_macos.py
@@ -280,10 +278,8 @@
 2190 test/test_onboarding_import_refactor_contract.py
 3579 test/test_overload_integration_glue.py
 2429 test/test_pinned_staging.py
-3402 test/test_pipeline_conductor_agent.py
 4048 test/test_pipeline_conductor_fleet_probe.py
 9045 test/test_platform_compat.py
-3331 test/test_platform_compat_coverage.py
 3012 test/test_playwright_cli_installer.py
 2725 test/test_plugin_import.py
 8519 test/test_pod.py

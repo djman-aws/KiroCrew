@@ -800,7 +800,7 @@ def _windows_restrict_to_owner_stub(request, _floor_monkeypatch):
         # the direct Windows-branch coverage for the owner-only lockdown, so a
         # stub would make their assertions vacuous. They were passing on Linux
         # (where the fixture is inert) and silently asserting nothing on Windows.
-        "test_platform_compat_coverage",
+        "test_platform_compat_coverage_filesystem",
         "test_config_rmw_preserves_settings",
         "test_spawn_audit",
     ):
