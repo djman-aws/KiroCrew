@@ -263,7 +263,6 @@
 4437 test/test_github_pull_request_monitor.py
 2349 test/test_governance_chokepoints.py
 5410 test/test_governance_distribution.py
-2539 test/test_governance_policy.py
 3102 test/test_handlers_memory_coverage.py
 2261 test/test_handlers_messaging_coverage.py
 2026 test/test_handlers_taskrunner_coverage.py
@@ -307,7 +306,6 @@
 2044 test/test_member_session_control.py
 4309 test/test_members_dm_thread.py
 2705 test/test_members_eventlog_wiring.py
-2479 test/test_messaging_privacy_mode.py
 2405 test/test_monitor_controller.py
 2096 test/test_monitor_directive_apply.py
 5822 test/test_onboarding_import.py
@@ -337,7 +335,6 @@
 2356 test/test_sandbox_governance_mask.py
 12647 test/test_security.py
 3048 test/test_security_conductor_ledger.py
-2501 test/test_security_conductor_scripts.py
 2055 test/test_security_conductor_verify_fix.py
 2034 test/test_security_path_resolve_bounded.py
 5509 test/test_sel.py
@@ -386,7 +383,6 @@
 6082 test/test_telegram_parity.py
 2055 test/test_telegram_sessions.py
 8129 test/test_terminal_handler.py
-2494 test/test_theme_install.py
 2591 test/test_tips.py
 2660 test/test_title_refresh.py
 4674 test/test_token_auth.py

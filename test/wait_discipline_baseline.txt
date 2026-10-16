@@ -253,7 +253,8 @@
  1 test_messaging_attachments.py
  1 test_messaging_auto_title.py
  3 test_messaging_driver.py
-12 test_messaging_privacy_mode.py
+ 4 test_messaging_privacy_mode.py
+ 8 test_messaging_privacy_mode_reservations.py
  1 test_mochi_activity.py
  1 test_mochi_autonomous_unfreeze.py
  4 test_mochi_poller_freestyle_backoff.py
@@ -297,7 +298,7 @@
  1 test_sandbox_argv.py
  2 test_sandbox_mount_source_sweep.py
  1 test_scenarios_v2_logic.py
- 2 test_security_conductor_scripts.py
+ 2 test_security_conductor_scripts_verify_finding.py
  4 test_security_path_resolve_bounded.py
  2 test_sel.py
  2 test_sel_prune_streaming.py
