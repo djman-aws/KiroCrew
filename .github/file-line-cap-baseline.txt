@@ -172,13 +172,11 @@
 2641 test/conftest.py
 2535 test/eventlog/test_eventlog.py
 2317 test/test_acp_client_more_coverage.py
-3482 test/test_acp_deepseek_backend.py
 2852 test/test_acp_pi_backend.py
 2909 test/test_acp_session_mcp.py
 2780 test/test_admission_gate.py
 9493 test/test_agent.py
 2896 test/test_agent_home_isolation.py
-3538 test/test_agent_panel_routes.py
 2359 test/test_ai_spine_driver_coverage.py
 2200 test/test_app_backend_composition_contract.py
 4051 test/test_app_manager.py
@@ -191,7 +189,6 @@
 3299 test/test_artifacts_handlers.py
 4053 test/test_auto_research.py
 2089 test/test_auto_research_handlers_coverage.py
-3522 test/test_aws_control_app.py
 6303 test/test_aws_control_backup.py
 2170 test/test_aws_control_backup_composition_contract.py
 3322 test/test_aws_control_backup_retention.py
@@ -379,7 +376,6 @@
 2014 test/test_vector_memory_coverage.py
 3145 test/test_voice_reply.py
 2549 test/test_wake_judge_feedback.py
-3521 test/test_webex_dispatch.py
 2006 test/test_webhooks_api.py
 2238 test/test_wheel_engine.py
 2944 website/electron/gateway-supervisor.js
