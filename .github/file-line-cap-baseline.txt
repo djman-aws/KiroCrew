@@ -178,7 +178,6 @@
 4284 test/test_acp_seed_provenance.py
 2909 test/test_acp_session_mcp.py
 2780 test/test_admission_gate.py
-9493 test/test_agent.py
 2896 test/test_agent_home_isolation.py
 3538 test/test_agent_panel_routes.py
 2359 test/test_ai_spine_driver_coverage.py
