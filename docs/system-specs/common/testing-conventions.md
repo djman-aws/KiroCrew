@@ -5127,7 +5127,7 @@ at most 25x the cost of the pump 10x shorter (above a 0.25 s floor, so a coarse 
 cannot read a linear cost as an unbounded ratio). The long pumps' absolute budget is
 `REDOS_LARGE_BUDGET_SECONDS` unless the caller passes the keyword-only `budget_seconds`:
 a guard converted from a wall-clock bound passes the constant it already carried, as
-`test/test_markdown_link_parentheses.py` does, since a ratchet may only tighten. Size any
+`test/test_markdown_link_parentheses_split_keys.py` does, since a ratchet may only tighten. Size any
 complexity guard so the regression it exists to catch FAILS it, not hangs it.
 
 **First check that the time is even the algorithm's.** A test that bounded `elapsed` around

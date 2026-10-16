@@ -98,7 +98,8 @@
  9 test_compaction_failure_pause.py
  6 test_conductor_wake.py
  1 test_config_api.py
- 6 test_config_live.py
+ 4 test_config_live.py
+ 2 test_config_live_server_appliers.py
  1 test_config_loader.py
  2 test_config_save_locking.py
  1 test_config_savers_locked_write.py
