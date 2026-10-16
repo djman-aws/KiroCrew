@@ -1719,7 +1719,8 @@ class AcpSessionHandle:
             prompt_blocks = await asyncio.to_thread(
                 build_prompt_blocks,
                 message,
-                allow_image=allow_image and self._runtime.supports_image_prompt,
+                allow_image=allow_image,
+                agent_accepts_image=self._runtime.supports_image_prompt,
             )
             # Content-free outbound STRUCTURE diagnostics: one
             # line per turn build recording block counts, per-type counts, and

@@ -7,8 +7,8 @@ Each function here whose first parameter is ``self`` is an ``AcpClient`` method:
 class binds it by name, so it reads and writes the session's own state on the instance,
 and a patch of the method on the class or on an instance reaches every caller.
 
-Instance fields written: ``_activated_model``, ``_agent_env_snapshot``,
-``_agent_version``, ``_agent_version_read``, ``_can_load_session``, ``_child_pids``,
+Instance fields written: ``_activated_model``, ``_agent_accepts_image``,
+``_agent_env_snapshot``, ``_agent_version``, ``_agent_version_read``, ``_can_load_session``, ``_child_pids``,
 ``_derived_spec_snapshot``, ``_fork_request``, ``_jsonl_pos``, ``_kill_sent``,
 ``_last_activity``, ``_last_substitution_model``, ``_mode_frame_awaited``,
 ``_mode_frame_superseded``, ``_model``, ``_native_skill_projection``, ``_pid``,
@@ -778,6 +778,12 @@ async def _initialize_session(self: AcpClient) -> None:
         )
     else:
         self._can_load_session = bool(capabilities.get("loadSession", False))
+    # Read on every handshake so a respawn onto a harness that dropped image
+    # support cannot keep a stale yes. Only a literal ``true`` counts.
+    prompt_capabilities = capabilities.get("promptCapabilities")
+    self._agent_accepts_image = (
+        isinstance(prompt_capabilities, dict) and prompt_capabilities.get("image") is True
+    )
     # No harness this core drives narrows the session MCP array against the
     # advertised ``mcpCapabilities``: every one of them either reads no array
     # or accepts the shapes Crew already sends, opencode being the measured

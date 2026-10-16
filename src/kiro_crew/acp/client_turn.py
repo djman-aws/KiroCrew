@@ -19,7 +19,7 @@ Instance fields written: ``_active_run_id``, ``_active_tool_calls``, ``_cancelle
 ``_tool_call_params``, ``_tool_call_tool_name``, ``_tool_call_unclassified``,
 ``_tool_dispatched``, ``_turn_done``, ``last_prompt_stats``.
 
-Instance fields read: ``_buffer``, ``_last_activity``, ``_liveness_oracle``,
+Instance fields read: ``_agent_accepts_image``, ``_buffer``, ``_last_activity``, ``_liveness_oracle``,
 ``_permission_gate_events``, ``_pid``, ``_process``, ``_session_id``, ``_steer_turn``,
 ``_turn_lock``.
 """
@@ -1248,7 +1248,10 @@ async def _send_prompt(self: AcpClient, message: str, *, allow_image: bool = Tru
             # Offloaded: see the note in session_handle.prompt -- image
             # reads and base64 encoding must not block the event loop.
             "prompt": await asyncio.to_thread(
-                build_prompt_blocks, message, allow_image=allow_image
+                build_prompt_blocks,
+                message,
+                allow_image=allow_image,
+                agent_accepts_image=self._agent_accepts_image,
             ),
         },
     )

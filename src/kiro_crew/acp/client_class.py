@@ -387,6 +387,9 @@ class AcpClient:
         self._fork_request: tuple[str, str] | None = None
         self._resumed = False
         self._can_load_session = False
+        # promptCapabilities.image from the initialize response. Fails closed:
+        # until a handshake says yes, no image block is sent.
+        self._agent_accepts_image = False
         # agentInfo.version from the initialize response — the version the
         # spawned process runs, not the file on disk. "" until the handshake.
         self._agent_version = ""
