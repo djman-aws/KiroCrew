@@ -944,6 +944,7 @@ def _baseline_fields(item: Any, header: Any) -> dict[str, Any]:
         "last_report_at": item.last_report_at or None,
         "closed_at": item.closed_at or None,
         "decided_at": getattr(item, "decided_at", None) or None,
+        "pending_since": getattr(item, "pending_since", None) or None,
     }
 
 
@@ -1293,7 +1294,7 @@ def _row_with_flags(
     conductor_alive: bool,
     patrolled: bool,
 ) -> dict[str, Any]:
-    """One item as a read row, with the four flags the store derives from liveness.
+    """One item as a read row, with the flags the store derives at read time.
 
     A function rather than four lines inlined per caller because the read route and
     the wake snapshot both publish these flags and must publish the SAME ones: a
@@ -1313,6 +1314,9 @@ def _row_with_flags(
     ``unpatrolled`` marks an open item whose conductor holds no active work-ledger
     watch -- nobody is reading its reports -- and ``patrolled`` is that one read for
     the whole board, passed in rather than re-read per item.
+
+    ``pending_overdue`` marks an item whose acceptance has read ``pending`` past the
+    budget, so the conductor stops polling it and asks the user.
     """
     row = item.to_dict()
     row["orphaned"] = work_ledger.is_orphaned(item, conductor_slot_exists=conductor_alive)
@@ -1324,11 +1328,12 @@ def _row_with_flags(
     )
     row["acceptance_concrete"] = work_ledger.is_acceptance_concrete(item.acceptance)
     row["unpatrolled"] = item.state == "open" and not patrolled
+    row["pending_overdue"] = work_ledger.is_pending_overdue(item)
     return row
 
 
 #: The fields a ``compact=true`` row carries: what a patrol cycle reads to decide
-#: who moves next, the three derived flags included, and nothing that is a
+#: who moves next, the derived flags included, and nothing that is a
 #: document in its own right (``acceptance``, ``artifacts``, the events).
 _COMPACT_ROW_FIELDS: tuple[str, ...] = (
     "item_id",
@@ -1347,6 +1352,7 @@ _COMPACT_ROW_FIELDS: tuple[str, ...] = (
     "stale",
     "acceptance_concrete",
     "unpatrolled",
+    "pending_overdue",
 )
 
 #: Query-string spellings of ``compact``. ``true`` / ``false`` is what the tool
@@ -1624,6 +1630,7 @@ async def api_work_ledger_record(request: web.Request) -> web.Response:
         created_at=_WIDEST_STAMP,
         closed_at=_WIDEST_STAMP,
         decided_at=_WIDEST_STAMP,
+        pending_since=_WIDEST_STAMP,
     )
     if invalid is not None:
         return invalid
@@ -1650,6 +1657,7 @@ async def api_work_ledger_record(request: web.Request) -> web.Response:
             created_at=_WIDEST_STAMP,
             closed_at=_WIDEST_STAMP,
             decided_at=_WIDEST_STAMP,
+            pending_since=_WIDEST_STAMP,
         ):
             return _refuse_item_too_large(key, "work_ledger_record", str(cleaned.get("item_id")))
         _audit(key, "work_ledger_record", "denied", resources=action, error="work_entry_too_large")
@@ -1757,6 +1765,9 @@ async def api_work_ledger_record(request: web.Request) -> web.Response:
                 created_at=getattr(item, "created_at", None) if action == "create" else None,
                 closed_at=getattr(item, "closed_at", None) if action == "close" else None,
                 decided_at=getattr(item, "decided_at", None) if action == "decide" else None,
+                pending_since=(
+                    getattr(item, "pending_since", None) if action == "verdict" else None
+                ),
             ),
         )
         if not landed:

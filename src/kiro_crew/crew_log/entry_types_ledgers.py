@@ -636,6 +636,14 @@ TYPES: tuple[EntryType, ...] = (
             Field("closed_at", JSON_STRING, note="The item's committed close stamp."),
             Field("decided_at", JSON_STRING, note="The item's committed decide stamp."),
             Field(
+                "pending_since",
+                JSON_STRING,
+                note=(
+                    "When the item's run of pending verdicts began, carried by a pending "
+                    "verdict; any other verdict, or an accept, clears it."
+                ),
+            ),
+            Field(
                 "board_round",
                 JSON_INT,
                 note="The board's committed round, carried by a baseline entry.",

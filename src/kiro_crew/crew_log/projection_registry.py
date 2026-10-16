@@ -547,10 +547,12 @@ _FOLDS: Final[dict[str, _Fold]] = {
         affects=frozenset({WORK_ENTRY_TYPE}),
         count_rows=_work_rows,
         count_opaque=_work_opaque,
-        # One past the base: the state now carries ``closed``, ``tombstones`` and
-        # ``forgotten``, and a closed item past the window leaves ``items``. A
+        # Two past the base. The state carries ``closed``, ``tombstones`` and
+        # ``forgotten``, and a closed item past the window leaves ``items``: a
         # savepoint of the shape that holds every item would resume holding them.
-        state_version=_FOLD_STATE_VERSION_BASE + 1,
+        # Each item carries ``pending_since``, which a savepoint without it would
+        # resume short of.
+        state_version=_FOLD_STATE_VERSION_BASE + 2,
     ),
     PANEL_FOLD_NAME: _Fold(
         PANEL_FOLD_NAME,
