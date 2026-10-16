@@ -178,7 +178,7 @@ export function useChatPanePickerModels({ slotKey, paneSlot, provider, dispatch,
   )
 
   return {
-    installedAgents, defaultAgent, paneAgentName, queryClient, navigate, defaultAgentFailed, toggleDefaultAgent, agentDD,
+    installedAgents, agentChoices, defaultAgent, paneAgentName, queryClient, navigate, defaultAgentFailed, toggleDefaultAgent, agentDD,
     selectionCapabilitiesQ, codexPairModels, hiddenModelsQ, modelPickerConfigured, jevRouteOn, modelDD,
     attachModelList, modelListEdges, agentBtnRect, anchorAgentBtn, modelBtnRect, anchorModelBtn, shownModel,
     effortSupported, effortLevelsOverride, defaultEffort, effectiveEffort, chipDefault, modelMarker,

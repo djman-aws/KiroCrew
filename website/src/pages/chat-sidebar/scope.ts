@@ -37,6 +37,7 @@ import type { useStaleCollapse } from './stale'
 import type { useHoldPinnedHeaderOnCollapse } from './stickyCollapse'
 import type { useSidebarTags } from './tags'
 import type { AgentInfo, HistoryItem, Slot } from './types'
+import type { MemorySourceRow } from '../../lib/agentMemorySource'
 import type { UseQueryResult, useQueryClient } from '@tanstack/react-query'
 import type { useNavigate } from 'react-router-dom'
 
@@ -54,6 +55,11 @@ export interface ChatSidebarProps {
    *  not flash every label to muted and back. Display only: pickers such as
    *  FolderConfigModal keep reading the scoped `installedAgents`. Defaults to it. */
   rowAgents?: AgentInfo[]
+  /** The agent picker's rows, unfolded (a crewmate and a custom agent of one
+   *  name are two rows), as last loaded. A row label whose agent has such a
+   *  pair says which memory the session runs on (#19472). Display only.
+   *  Absent: no row is marked. */
+  rowChoices?: MemorySourceRow[]
   mode?: string
   onWidthChange?: (w: number) => void
   onDragChange?: (dragging: boolean) => void

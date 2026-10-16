@@ -204,6 +204,7 @@ function ChatInput({
   agentName,
   agentLabel,
   agentIsInheritedDefault,
+  agentMemory,
   modelIsInheritedDefault,
   modelIsAutoChosen,
   modelIsJevRouted,
@@ -1628,7 +1629,7 @@ function ChatInput({
           )}
           <div className="flex items-center gap-2 min-w-0 flex-1">
           {onAgentClick && agentName && (
-            <AgentChip agentName={agentName} agentLabel={agentLabel} agentIsInheritedDefault={agentIsInheritedDefault} agentSource={agentSource} isRunning={isRunning} shelfCompact={shelfCompact} onAgentClick={onAgentClick} />
+            <AgentChip agentName={agentName} agentLabel={agentLabel} agentIsInheritedDefault={agentIsInheritedDefault} agentMemory={agentMemory} agentSource={agentSource} isRunning={isRunning} shelfCompact={shelfCompact} onAgentClick={onAgentClick} />
           )}
           {!onProjectClick && sessionOnPeer && !!projectProp && (
             /* The same pill as a plain label: the folder is another machine's,

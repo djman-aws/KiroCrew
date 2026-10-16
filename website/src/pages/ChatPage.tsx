@@ -192,7 +192,7 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
   const activeSlotRemoteBound = slotIsRemoteBound(slots.find(s => s.key === activeSlot))
   // The agent and model rosters the pickers offer.
   const {
-    installedAgents, sidebarAgents, defaultAgent, effectiveAgents,
+    installedAgents, sidebarAgents, sidebarChoices, defaultAgent, effectiveAgents,
     defaultAgentFailed, toggleDefaultAgent,
     agentDropdown, setAgentDropdown, agentFilter, setAgentFilter, agentDropdownRef, agentInputRef, filteredAgents,
     effectiveModels,
@@ -949,7 +949,7 @@ export default function ChatPage({ mode, embedded, embedMode, popout, noUrlSync 
         embedMode={embedMode} mode={mode} activeSlot={activeSlot} connected={connected} creatingSlot={creatingSlot} dispatch={dispatch} filteredSlots={filteredSlots} isMobile={isMobile}
         keyboardInset={keyboardInset} mobileNavRail={mobileNavRail} surfaceUnreadSlots={surfaceUnreadSlots} titleInTopbar={titleInTopbar} topbarSlot={topbarSlot} topbarTrailSlot={topbarTrailSlot}
         vv={vv} activityOpen={activityOpen} clearSplitOnSelect={clearSplitOnSelect} history={history} historyHasMore={historyHasMore} navigateToEmbeddedSlot={navigateToEmbeddedSlot}
-        openEmbeddedCrewWindow={openEmbeddedCrewWindow} splitMode={splitMode} defaultAgent={defaultAgent} installedAgents={installedAgents} sidebarAgents={sidebarAgents}
+        openEmbeddedCrewWindow={openEmbeddedCrewWindow} splitMode={splitMode} defaultAgent={defaultAgent} installedAgents={installedAgents} sidebarAgents={sidebarAgents} sidebarChoices={sidebarChoices}
         setActionError={setActionError} showActionError={showActionError} canStageSessionRef={canStageSessionRef} chatPaneEl={chatPaneEl} stageSessionRef={stageSessionRef}
         openSlotInNewTab={openSlotInNewTab} ownsSessionTabs={ownsSessionTabs} activePoppedOut={activePoppedOut} focusActivePopout={focusActivePopout} openActivePopout={openActivePopout}
         splitFeatureEnabled={splitFeatureEnabled} currentSlot={currentSlot} effectiveMode={effectiveMode} title={title} activeIsSplitAnchor={activeIsSplitAnchor} editingTitle={editingTitle}

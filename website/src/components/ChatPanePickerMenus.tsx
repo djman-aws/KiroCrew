@@ -10,6 +10,7 @@ import { settingsPath } from './settingsPath'
 import { legacyCodexEffort } from '../hooks/useInteractiveModels'
 import { jevRouteShownModel } from '../lib/jevRoute'
 import { i18nT } from '../i18n/t'
+import { sessionMemoryTag } from '../lib/agentMemorySource'
 import type { NavigateFunction } from 'react-router-dom'
 import type { RootState } from '../store'
 import type { useChatPanePickerActions, useChatPanePickerModels } from './useChatPanePickers'
@@ -34,7 +35,7 @@ type MenuProps = {
 }
 
 export function ChatPaneAgentMenu({ paneSlot, models, actions, navigate }: Omit<MenuProps, 'slotKey'>) {
-  const { agentDD, agentBtnRect, paneAgentName, defaultAgent, installedAgents, toggleDefaultAgent, defaultAgentFailed } = models
+  const { agentDD, agentBtnRect, paneAgentName, defaultAgent, installedAgents, agentChoices, toggleDefaultAgent, defaultAgentFailed } = models
   const { onAgentListKeyDown, switchAgent } = actions
   return (
     <>
@@ -70,7 +71,7 @@ export function ChatPaneAgentMenu({ paneSlot, models, actions, navigate }: Omit<
             <AgentDropdownList agents={agentDD.filtered} activeAgent={paneAgentName} activeKind={paneSlot?.agent_kind} defaultAgent={defaultAgent} onSelect={(name, kind) => { switchAgent(name, kind); agentDD.setOpen(false) }} />
           </div>
           {/* The default for new sessions is a template; a crewmate's chat offers no such write. */}
-          {!isCrewmateChat(paneSlot?.agent_kind, paneAgentName, installedAgents) && <DefaultAgentRow agentName={paneAgentName} isDefault={paneAgentName === defaultAgent} onSetDefault={() => toggleDefaultAgent(paneAgentName, defaultWriteKind(paneSlot?.agent_kind))} />}
+          {!isCrewmateChat(paneSlot?.agent_kind, paneAgentName, installedAgents) && <DefaultAgentRow agentName={paneAgentName} isDefault={paneAgentName === defaultAgent} memoryTag={sessionMemoryTag(paneSlot?.agent, paneSlot?.agent_kind, defaultAgent, agentChoices)} onSetDefault={() => toggleDefaultAgent(paneAgentName, defaultWriteKind(paneSlot?.agent_kind))} />}
           <ManageAgentsFooter error={defaultAgentFailed} onManage={() => { agentDD.setOpen(false); navigate('/capabilities?tab=crews') }} />
         </div>,
         document.body,

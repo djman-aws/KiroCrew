@@ -28,6 +28,7 @@ import { crewOf } from '../../hooks/useInstanceSessions'
 import { isWithinRecentWindow } from '../recentWindow'
 import { splitStaleSlots, type StaleSplit } from '../staleCollapse'
 import { isPeerRow, sessionRowIdentity } from './rowIdentity'
+import type { MemorySourceRow } from '../../lib/agentMemorySource'
 import type { AgentInfo, FilterDimension, RevealBlockingFilter, SessionFilterKey, SidebarSourceLink, Slot } from './types'
 
 /** What the chip prints. The serializer decides it; this only covers its absence,
@@ -181,6 +182,9 @@ export interface RowShell {
   colorMode: string
   defaultAgent: string
   installedAgents: AgentInfo[]
+  /** The picker's unfolded rows: a row whose agent has a same-name crewmate and
+   *  custom agent says which memory it runs on (#19472). */
+  memoryRows: MemorySourceRow[]
   tagById: Record<string, ChatTag>
   paletteColors: string[]
   boost: PaletteBoost

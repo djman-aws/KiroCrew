@@ -38,7 +38,8 @@ import { deriveAutomationStatus, MONITOR_STATUS_KEYS } from '../../monitoring/au
 import MonitorRadar from '../../components/MonitorRadar'
 import { i18nT } from '../../i18n/t'
 import { uiLocation } from '../../uiLocations/uiLocation'
-import { agentOrDefaultLabel } from '../../utils/agentLabel'
+import { agentOrDefaultLabel, withMemorySource } from '../../utils/agentLabel'
+import { sessionMemoryTag } from '../../lib/agentMemorySource'
 import { sameRowView, type SessionRowView } from './rows'
 import { CrewOfflineContext } from './CrewGroups'
 import { useSlotTitleGenerating } from '../../hooks/slotTitleGeneration'
@@ -268,7 +269,7 @@ export const SessionRow = memo(function SessionRow({ view, actions }: SessionRow
       : i18nT('pages.chatSidebar.release_locally_hint_generic'))
     : conductor && conductor.childCount > 0 ? i18nT('pages.chatSidebar.close_keeps_children_hint') : undefined
   const {
-    connected, mode, isMobile, colorMode, defaultAgent, installedAgents, tagById, paletteColors, boost, boostFor,
+    connected, mode, isMobile, colorMode, defaultAgent, installedAgents, memoryRows, tagById, paletteColors, boost, boostFor,
     recentTintCount, dragInFlight, activeDraggedKey, activeDraggedPinnedIndex, guideOnRowControl,
   } = view.shell
   const {
@@ -456,7 +457,15 @@ export const SessionRow = memo(function SessionRow({ view, actions }: SessionRow
     // The row's own empty-state placeholder is preserved: with no agent AND no
     // default there is nothing to mark, and the literal 'default' the helper
     // degrades to would be a boot-window claim rather than a label.
-    const agentDisplay = agentName ? agentOrDefaultLabel(s.agent, defaultAgent) : ''
+    //
+    // A crewmate and a custom agent of one name read alike, so a row whose agent
+    // has such a pair in the picker also says which memory it runs on (#19472).
+    // Local rows only: `memoryRows` is THIS machine's catalog, and a peer's row
+    // or a row whose turns run on another crew resolves its agent there.
+    const memoryTag = agentName && !peerId && !crewOf(s)
+      ? sessionMemoryTag(s.agent, s.agent_kind, defaultAgent, memoryRows)
+      : null
+    const agentDisplay = agentName ? withMemorySource(agentOrDefaultLabel(s.agent, defaultAgent), memoryTag) : ''
     // A DIVERGENCE, not a status: the row is advertising `agentName` while a
     // different agent answers the session — usually an app agent that was
     // removed, or one whose registration has not landed yet. Shown because the

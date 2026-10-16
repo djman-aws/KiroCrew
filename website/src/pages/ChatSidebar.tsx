@@ -88,9 +88,13 @@ import { renderFolderModal } from './chat-sidebar/folderModal'
 import { renderSessionCleanupPanel, useSessionCleanup } from './chat-sidebar/sessionCleanup'
 import { renderBulkModelPanel, useBulkModelSwitch } from './chat-sidebar/bulkModelSwitch'
 import BroadcastPanel from './chat-sidebar/BroadcastPanel'
+import type { MemorySourceRow } from '../lib/agentMemorySource'
 
 /** Stable empty group list for the board, which groups nothing. */
 const NO_CREW_GROUPS: CrewGroup[] = []
+/** Stable empty picker rows for a host that passes none, so `rowShell` keeps
+ *  its identity across renders. */
+const NO_MEMORY_ROWS: MemorySourceRow[] = []
 
 import { SIDEBAR_MIN } from './chat/sidebarWidth'
 export { SIDEBAR_MIN, SIDEBAR_MAX } from './chat/sidebarWidth'
@@ -122,7 +126,7 @@ function ChatSidebar({
   // only the binding is scoped, which forces every call site inside this file
   // to say which collection it means.
   slots: localSlots, activeSlot, unreadSlots, history, historyHasMore,
-  defaultAgent, installedAgents, rowAgents, mode, onWidthChange, onDragChange, fillsHost, onSelectSlot, onOpenSlotInNewTab, onOpenSource, onOpenPeerSession, collapsible,
+  defaultAgent, installedAgents, rowAgents, rowChoices, mode, onWidthChange, onDragChange, fillsHost, onSelectSlot, onOpenSlotInNewTab, onOpenSource, onOpenPeerSession, collapsible,
   chatDropTarget, onDropSessionRef, staticRows, scrollPeek,
 }: ChatSidebarProps) {
   useLanguageGeneration() // memo() bails out of the provider-level repaint; subscribe directly
@@ -696,6 +700,7 @@ function ChatSidebar({
   const activeDraggedKey = activeDrag?.type === 'session' ? activeDrag.id : null
   const activeDraggedPinnedIndex = activeDraggedKey !== null ? (pinnedRank.get(activeDraggedKey) ?? -1) : -1
   const tintAgents = rowAgents ?? installedAgents
+  const memoryRows = rowChoices ?? NO_MEMORY_ROWS
   // A live guide step pointing at a row control (`sessions.row-menu`, or a
   // `ui.find` whose opener is it) needs the open row's actions shown with no
   // pointer on the row. Only a step GuideLayer draws here counts (owned by this
@@ -703,13 +708,13 @@ function ChatSidebar({
   const guideView = useGuide()?.view
   const guideOnRowControl = guideStepOnRowControl(guideView?.ownedHere && !guideView.needsEnter ? guideView.step : null)
   const rowShell: RowShell = useMemo(() => ({
-    connected, mode, defaultAgent, installedAgents: tintAgents, tagById, paletteColors, boost, boostFor, colorMode, recentTintCount,
+    connected, mode, defaultAgent, installedAgents: tintAgents, memoryRows, tagById, paletteColors, boost, boostFor, colorMode, recentTintCount,
     // A session row on any touch screen (an iPad too) gets the single ⋯ menu,
     // not the overlay cluster.
     isMobile: isMobile || isTouchDevice,
     dragInFlight, activeDraggedKey, activeDraggedPinnedIndex, guideOnRowControl,
   }), [
-    connected, mode, defaultAgent, tintAgents, tagById, paletteColors, boost, boostFor, colorMode, recentTintCount,
+    connected, mode, defaultAgent, tintAgents, memoryRows, tagById, paletteColors, boost, boostFor, colorMode, recentTintCount,
     isMobile, isTouchDevice, dragInFlight, activeDraggedKey, activeDraggedPinnedIndex, guideOnRowControl,
   ])
   // What this render shows rows with. The row model reads the local-only members

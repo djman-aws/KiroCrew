@@ -49,6 +49,8 @@ interface SessionsSidebarChromeProps {
   defaultAgent: string
   installedAgents: KiroCrewAgent[]
   sidebarAgents: KiroCrewAgent[]
+  /** The picker's unfolded rows, for the session list's same-name memory mark. */
+  sidebarChoices: KiroCrewAgent[]
   setActionError: ReturnType<typeof useSteerDelivery>['setActionError']
   showActionError: (message: string, title?: string, report?: ErrorReport) => void
   canStageSessionRef: boolean
@@ -104,7 +106,7 @@ interface SessionsSidebarChromeProps {
  */
 export default function SessionsSidebarChrome({
   embedMode, mode, activeSlot, connected, creatingSlot, dispatch, filteredSlots, isMobile, keyboardInset, mobileNavRail, surfaceUnreadSlots, titleInTopbar, topbarSlot, topbarTrailSlot, vv,
-  activityOpen, clearSplitOnSelect, history, historyHasMore, navigateToEmbeddedSlot, openEmbeddedCrewWindow, splitMode, defaultAgent, installedAgents, sidebarAgents, setActionError, showActionError,
+  activityOpen, clearSplitOnSelect, history, historyHasMore, navigateToEmbeddedSlot, openEmbeddedCrewWindow, splitMode, defaultAgent, installedAgents, sidebarAgents, sidebarChoices, setActionError, showActionError,
   canStageSessionRef, chatPaneEl, stageSessionRef, openSlotInNewTab, ownsSessionTabs, activePoppedOut, focusActivePopout, openActivePopout, splitFeatureEnabled, currentSlot, effectiveMode, title,
   activeIsSplitAnchor, editingTitle, enterSplit, setEditingTitleSlot, setSidebarDragging, setSidebarWidth, sidebarAutoHidden, sidebarDragging, splitAnchorForActive, effectiveSidebarWidth, toggleAct,
   winW, closeSidebar, containerH, drawerDragging, drawerMounted, drawerPanelRef, drawerScrim, drawerScrimRef, drawerX, expandFrom, expandSidebar, flyout, flyoutEligible, flyoutSurfaceRef,
@@ -208,6 +210,7 @@ export default function SessionsSidebarChrome({
             defaultAgent={defaultAgent}
             installedAgents={installedAgents}
             rowAgents={sidebarAgents}
+            rowChoices={sidebarChoices}
             mode={mode}
             onWidthChange={setSidebarWidth}
             onDragChange={setSidebarDragging}
@@ -265,6 +268,7 @@ export default function SessionsSidebarChrome({
           defaultAgent={defaultAgent}
           installedAgents={installedAgents}
           rowAgents={sidebarAgents}
+          rowChoices={sidebarChoices}
           mode={mode}
           onWidthChange={setSidebarWidth}
           onDragChange={setSidebarDragging}

@@ -5928,7 +5928,11 @@
       "no_matches": "Keine Treffer",
       "set_default_agent": "<agent/> als Standard für neue Sitzungen festlegen",
       "group_templates_hint": "Ein benutzerdefinierter Agent ist eine wiederverwendbare Agent-Konfiguration.",
-      "group_templates_hint_default_workspace": "Ein benutzerdefinierter Agent ist eine wiederverwendbare Agent-Konfiguration. Wer einen wählt, nutzt deinen Standard-Arbeitsbereich und das gemeinsame Gedächtnis; es wird kein neuer Crew-Kamerad angelegt."
+      "group_templates_hint_default_workspace": "Ein benutzerdefinierter Agent ist eine wiederverwendbare Agent-Konfiguration. Wer einen wählt, nutzt deinen Standard-Arbeitsbereich und das gemeinsame Gedächtnis; es wird kein neuer Crew-Kamerad angelegt.",
+      "own_memory": "Eigenes Gedächtnis",
+      "shared_memory": "Gemeinsames Gedächtnis",
+      "label_own_memory": "{{label}} · eigenes Gedächtnis",
+      "label_shared_memory": "{{label}} · gemeinsames Gedächtnis"
     },
     "agentImportFlow": {
       "back": "Zurück",

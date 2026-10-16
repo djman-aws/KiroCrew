@@ -6029,7 +6029,11 @@
       "no_matches": "Aucun résultat",
       "set_default_agent": "Définir <agent/> par défaut pour les nouvelles sessions",
       "group_templates_hint": "Un agent personnalisé est une configuration d’agent réutilisable.",
-      "group_templates_hint_default_workspace": "Un agent personnalisé est une configuration d’agent réutilisable. En choisir un utilise ton espace de travail par défaut et la mémoire partagée ; aucun nouveau coéquipier n’est créé."
+      "group_templates_hint_default_workspace": "Un agent personnalisé est une configuration d’agent réutilisable. En choisir un utilise ton espace de travail par défaut et la mémoire partagée ; aucun nouveau coéquipier n’est créé.",
+      "own_memory": "Mémoire propre",
+      "shared_memory": "Mémoire partagée",
+      "label_own_memory": "{{label}} · mémoire propre",
+      "label_shared_memory": "{{label}} · mémoire partagée"
     },
     "agentImportFlow": {
       "back": "Retour",

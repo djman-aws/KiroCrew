@@ -29,6 +29,7 @@ import { useJevAutoSend } from '../pages/chat/useJevAutoSend'
 import type { DisplayItem } from '../pages/chat/types'
 import { useSlotActivity } from '../pages/members/useSlotActivity'
 import { agentOrDefaultLabel } from '../utils/agentLabel'
+import { sessionMemoryTag } from '../lib/agentMemorySource'
 import { SlotProvider } from '../providers/SlotContext'
 import { useProvider } from '../providers'
 import { useConnectionsUiEnabled } from '../hooks/useConnectionsUi'
@@ -402,7 +403,7 @@ export default function ChatPane({
 
   const pickerModels = useChatPanePickerModels({ slotKey, paneSlot, provider, dispatch, dashCfg })
   const {
-    installedAgents, defaultAgent, paneAgentName, queryClient, navigate, agentDD, selectionCapabilitiesQ, codexPairModels,
+    installedAgents, agentChoices, defaultAgent, paneAgentName, queryClient, navigate, agentDD, selectionCapabilitiesQ, codexPairModels,
     jevRouteOn, modelDD, anchorAgentBtn, anchorModelBtn, shownModel, effortSupported, defaultEffort, effectiveEffort,
     chipDefault, modelMarker,
   } = pickerModels
@@ -975,6 +976,9 @@ export default function ChatPane({
           // `<default> · default` and a pinned one reads the bare alias (#8770).
           agentLabel={agentOrDefaultLabel(paneSlot?.agent, defaultAgent)}
           agentIsInheritedDefault={!paneSlot?.agent && !!defaultAgent}
+          // Same rows the pane's picker lists, so chip and picker agree on when
+          // a same-name pair needs telling apart.
+          agentMemory={sessionMemoryTag(paneSlot?.agent, paneSlot?.agent_kind, defaultAgent, agentChoices)}
           agentSource={installedAgents.find((a) => a.name === paneAgentName)?.source}
           modelName={shownModel}
           reasoningEffort={effectiveEffort}

@@ -21,6 +21,7 @@ import type { SlotApprovalMode } from '../../../utils/slotApprovalMode'
 import { SETTINGS_DEFAULT_MODEL_ID } from '../../../hooks/useSettingHighlight'
 import { settingsPath } from '../../../components/settingsPath'
 import { agentOrDefaultLabel } from '../../../utils/agentLabel'
+import { sessionMemoryTag } from '../../../lib/agentMemorySource'
 import { dismissFollowupItem, type FollowupItem } from '../../../store/chatSlice'
 import { Input } from '../../../components/ui'
 import { KnowledgeBubbleChip } from '../ChatPageMessageContent'
@@ -521,6 +522,9 @@ export default function ComposerDockView({
               // `<default> · default` and a pinned one reads the bare alias (#8770).
               agentLabel={agentOrDefaultLabel(currentSlot?.agent, defaultAgent)}
               agentIsInheritedDefault={!currentSlot?.agent && !!defaultAgent}
+              // Read from the same rows the picker lists, so the chip marks a
+              // session exactly when the picker shows a same-name pair.
+              agentMemory={sessionMemoryTag(currentSlot?.agent, currentSlot?.agent_kind, defaultAgent, effectiveAgents)}
               agentSource={effectiveAgents.find(a => a.name === activeAgentName)?.source}
               modelName={shownModel}
               modelIsInheritedDefault={modelMarker === 'default'}
@@ -659,7 +663,7 @@ export default function ComposerDockView({
                     failed-write alert — offering the write without its error path would make
                     a rejected request indistinguishable from a successful one. */}
                 {/* The default for new sessions is a template; a crewmate's chat offers no such write. */}
-                {!embedded && !isCrewmateChat(currentSlot?.agent_kind, activeAgentName, installedAgents) && <DefaultAgentRow agentName={activeAgentName} isDefault={activeAgentName === defaultAgent} onSetDefault={() => toggleDefaultAgent(activeAgentName, defaultWriteKind(currentSlot?.agent_kind))} />}
+                {!embedded && !isCrewmateChat(currentSlot?.agent_kind, activeAgentName, installedAgents) && <DefaultAgentRow agentName={activeAgentName} isDefault={activeAgentName === defaultAgent} memoryTag={sessionMemoryTag(currentSlot?.agent, currentSlot?.agent_kind, defaultAgent, effectiveAgents)} onSetDefault={() => toggleDefaultAgent(activeAgentName, defaultWriteKind(currentSlot?.agent_kind))} />}
                 {!embedded && <ManageAgentsFooter error={defaultAgentFailed} onManage={() => { setAgentDropdown(false); navigate('/capabilities?tab=crews') }} />}
               </div>,
               document.body

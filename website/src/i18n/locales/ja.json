@@ -5797,7 +5797,11 @@
       "no_matches": "マッチするものがありません",
       "set_default_agent": "<agent/> を新しいセッションのデフォルトに設定",
       "group_templates_hint": "カスタムエージェントは再利用できるエージェント設定です。",
-      "group_templates_hint_default_workspace": "カスタムエージェントは再利用できるエージェント設定です。選ぶと既定のワークスペースと共有メモリを使います。新しいクルーメイトは作成されません。"
+      "group_templates_hint_default_workspace": "カスタムエージェントは再利用できるエージェント設定です。選ぶと既定のワークスペースと共有メモリを使います。新しいクルーメイトは作成されません。",
+      "own_memory": "独自のメモリ",
+      "shared_memory": "共有メモリ",
+      "label_own_memory": "{{label}} · 独自のメモリ",
+      "label_shared_memory": "{{label}} · 共有メモリ"
     },
     "agentImportFlow": {
       "back": "戻る",

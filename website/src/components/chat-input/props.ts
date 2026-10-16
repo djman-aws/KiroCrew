@@ -7,6 +7,7 @@ import type { PasteBlock } from '../../utils/pasteTokens'
 import type { FileKind } from '../FilePickerMenu'
 import type { PromptHistoryItem } from '../composerPromptHistory'
 import type { ApprovalModeRemote } from '../ApprovalModePicker'
+import type { MemorySource } from '../../lib/agentMemorySource'
 
 /* The composer's public prop contract. `components/ChatInput.tsx` takes it
    and re-exports `ComposerBusyMode`; the owners under this directory take the
@@ -167,6 +168,11 @@ export interface ChatInputProps {
    * marker alone reads as opaque (#8770 UX review). Only the inherited case
    * gets it; a pinned chip has nothing to explain. */
   agentIsInheritedDefault?: boolean
+  /**
+   * The memory the session's agent runs on, set only when a crewmate and a
+   * custom agent share its name (`sessionMemoryTag`, #19472). The chip then
+   * marks its label and spoken name with it. Null or unset: no mark. */
+  agentMemory?: MemorySource | null
   agentSource?: string
   modelName?: string
   /**
