@@ -839,6 +839,20 @@ class TestCloudCredentialErrorNamesAFreshProcess:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("driver", [_raise_via_wait, _raise_via_dispatch])
+    async def test_credential_frame_stays_terminal_when_the_prose_reads_as_a_retry(self, driver):
+        """The pin is what holds the verdict: wording that trips the retry hint
+        ("please try again") would read transient without it."""
+        reworded = dict(
+            _CLOUD_CREDENTIAL_ERROR,
+            message="Internal error: Could not load AWS credentials. Please try again.",
+        )
+        exc = await driver(reworded)
+
+        assert exc.credential_reload is True
+        assert exc.transient is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("driver", [_raise_via_wait, _raise_via_dispatch])
     async def test_credential_frame_does_not_offer_the_kiro_sign_in_card(self, driver):
         """``auth_required`` stays unset: the Kiro sign-in card is not the fix.
 

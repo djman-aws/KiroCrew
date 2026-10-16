@@ -181,7 +181,8 @@ async def test_slack_stale_credential_error_recycles_and_replays_once():
 
 @pytest.mark.asyncio
 async def test_slack_stale_credential_error_second_failure_is_not_a_loop():
-    """A fresh process that fails its own credential load ends the turn."""
+    """A fresh process that fails its own credential load ends the turn, and
+    the give-up carries the provider's remedy (a new thread would fail alike)."""
     from test_slack_handler import FakeSessionManager, MockSlackClient, _visible_texts
 
     from kiro_crew.slack.handler import handle_message
@@ -194,7 +195,8 @@ async def test_slack_stale_credential_error_second_failure_is_not_a_loop():
 
     assert provider.turns == 2, "one replay, never a loop"
     texts = _visible_texts(slack)
-    assert any(SESSION_NOT_FOUND_GIVE_UP_TEXT in t for t in texts), texts
+    assert any("Check or refresh your AWS credentials" in t for t in texts), texts
+    assert not any(SESSION_NOT_FOUND_GIVE_UP_TEXT in t for t in texts), texts
 
 
 # ── channel agent ───────────────────────────────────────────────────────────
@@ -272,6 +274,34 @@ async def test_channel_second_loss_returns_none():
         )
         is None
     )
+
+
+@pytest.mark.asyncio
+async def test_channel_broken_credential_helper_ends_on_the_providers_remedy():
+    """A helper that is really broken fails the fresh process too: the channel
+    recycles once, worded for credentials, then posts the provider's remedy."""
+    from test_channel_prompt_busy import FakeSessions, _raising_client
+
+    from kiro_crew import channel as channel_mod
+    from kiro_crew.llm_helpers import CREDENTIAL_RELOAD_RETRY_NOTICE
+
+    ch = channel_mod.Channel(id="c1", topic="review")
+    agent = ch.add_agent(role="dev", agent_name="dev")
+    assert agent is not None
+    sessions = FakeSessions(
+        [_raising_client(_credential_dead()), _raising_client(_credential_dead())]
+    )
+
+    task = asyncio.create_task(channel_mod.run_channel_agent(agent, ch, sessions))
+    await ch.post("human", "start the review")
+    await asyncio.wait_for(task, timeout=30)
+
+    posted = [m.content for m in ch.messages if m.from_id == agent.id]
+    assert agent.state == "failed"
+    assert CREDENTIAL_RELOAD_RETRY_NOTICE in posted
+    assert SESSION_NOT_FOUND_RETRY_NOTICE not in posted
+    assert any("Check or refresh your AWS credentials" in p for p in posted)
+    assert not any(SESSION_NOT_FOUND_GIVE_UP_TEXT in p for p in posted)
 
 
 # ── cron (single agent and sequence) ────────────────────────────────────────

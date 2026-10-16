@@ -286,15 +286,11 @@ class AcpError(Exception):
         # formatter rewrites a dispatch failure into the generic 5xx prose.
         # ``None`` means unclassified: readers fall back to the message text.
         self.connection_failure: bool | None = None
-        # Stale-process-credential tag, set by :func:`_raise_acp_error` when the
-        # raw frame's ``data`` names ``errorKind: cloud_credential_error``. The
-        # backend PROCESS answered, but the credentials it cached cannot be
-        # loaded any more (Claude Code on Bedrock: the credential helper rotated
-        # them under a long-lived process, and a chat started fresh in the same
-        # window works) -- so a retry on this process re-draws the answer and
-        # the remedy is a fresh process, not a retry. Read by
-        # ``llm_helpers.acp_error_is_session_not_found``, which routes it down
-        # the same reset-and-reload-once path a dropped session takes.
+        # Set by :func:`_raise_acp_error` when the frame's ``data`` names
+        # ``errorKind: cloud_credential_error``: the process cached credentials
+        # it cannot reload, so the remedy is a fresh process, not a retry.
+        # ``llm_helpers.acp_error_is_session_not_found`` routes it down the
+        # reset-and-reload-once path a dropped session takes.
         self.credential_reload: bool = False
 
 
@@ -1992,20 +1988,11 @@ def _raise_acp_error(
         raw_data_field, available_models
     ):
         err.usage_limit = True
-    # Tag a stale-credential answer so the session-recovery surfaces recycle the
-    # backend process instead of retrying it. The kind arrives STRUCTURALLY in
-    # the raw frame's ``data`` (claude-agent-acp: Claude Code on Bedrock could
-    # not load the AWS credentials its process cached); the dict's repr also
-    # reaches the formatted message through the unknown-shape branch, but the
-    # tag reads the field, not the prose, so a rewording cannot lose it. The
-    # verdict is pinned non-transient -- rather than left to the classifier --
-    # because the prose ends in "try again": if a rewording ever tripped a
-    # retry-hint pattern, a retry ladder would be pointed back at the one
-    # process that cannot reload. Deliberately NOT ``auth_required``: that tag
-    # offers the Kiro sign-in card, which signs in the wrong identity for a
-    # harness that loads its own credentials (harness parity H6).
-    # ``llm_helpers.acp_error_is_session_not_found`` reads this tag, so every
-    # surface that recycles a lost session recycles this one too.
+    # A stale-credential answer, read from the structured field (not the prose),
+    # recycles the process instead of retrying it. Pinned non-transient: the
+    # prose ends in "try again", and a retry would re-ask the one process that
+    # cannot reload. Not ``auth_required``: that card signs in the wrong identity
+    # for a harness that loads its own credentials (harness parity H6).
     if _error_kind_from_frame(error) == "cloud_credential_error":
         err.credential_reload = True
         err.transient = False

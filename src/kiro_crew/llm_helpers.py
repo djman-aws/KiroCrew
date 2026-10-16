@@ -358,7 +358,31 @@ def acp_error_is_session_not_found(exc: BaseException) -> bool:
         return False
     if "session not found" in str(exc).lower():
         return True
-    return getattr(exc, "credential_reload", False) is True
+    return acp_error_needs_fresh_credentials(exc)
+
+
+def acp_error_needs_fresh_credentials(exc: BaseException) -> bool:
+    """True when *exc* is the provider's ``cloud_credential_error`` answer.
+
+    The cause half of :func:`acp_error_is_session_not_found`: a surface that
+    recycles the process reads this to word its notices for credentials, not
+    for a lost session, and to hand the provider's own remedy to the user.
+    """
+    return isinstance(exc, AcpError) and getattr(exc, "credential_reload", False) is True
+
+
+def credential_give_up_text(exc: BaseException | str) -> str:
+    """The dead end of a credential failure that the fresh process drew too.
+
+    The helper itself is broken (an expired SSO login, a revoked role), so no
+    restart or new chat can fix it: the provider's own instruction is the only
+    actionable line, and it is carried verbatim. Each surface appends its own
+    next step.
+    """
+    return (
+        "The agent still could not load its cloud credentials after a restart. "
+        f"Fix them first. The provider said: {exc}"
+    )
 
 
 #: Set by :func:`stream_and_collect` on an ``AcpError`` it propagates: True when a
@@ -373,6 +397,10 @@ def acp_error_after_tool_activity(exc: BaseException) -> bool:
 
 #: Shown once by a surface that re-loads a lost session and retries the turn.
 SESSION_NOT_FOUND_RETRY_NOTICE = "⟳ The agent lost its session — reconnecting…"
+#: The same one retry, when the cause is credentials the process could not load.
+CREDENTIAL_RELOAD_RETRY_NOTICE = (
+    "⟳ The agent could not load its cloud credentials — restarting it to load them again…"
+)
 #: The error a surface ends on when the one reconnect did not give it a usable session.
 SESSION_NOT_FOUND_GIVE_UP_TEXT = "Could not reconnect the agent's session."
 #: A session lost after the turn started working: replaced, but not replayed,

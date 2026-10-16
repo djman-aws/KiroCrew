@@ -2833,7 +2833,7 @@ A live backend can answer every prompt with `Session not found` for the backend 
 
 The remedy is the same on every surface: `SessionManager.reset(key)` drops the live binding and keeps the session-map entry, so the next claim spawns a fresh runtime that `session/load`s the SAME id; Load Recovery above falls back to a new session plus history replay only when that load fails. The turn is re-run once. A second loss ends on a clear error. Both answers above ride this one path under the same budget: one reload per turn, and the tool-activity invariant below applies to a credential-stale process exactly as it does to a dropped session.
 
-The reset needs the surface's own session manager and the re-run needs its own output path, so each surface routes the answer into the one replace-and-run-again seam it already owns (the seams below serve `credential_reload` identically — nothing in them reads which of the two answers routed in):
+The reset needs the surface's own session manager and the re-run needs its own output path, so each surface routes the answer into the one replace-and-run-again seam it already owns (the seams below serve `credential_reload` identically; only the wording differs — the dashboard and channel seams read `acp_error_needs_fresh_credentials` to post `CREDENTIAL_RELOAD_RETRY_NOTICE` and, when the fresh process fails too, a give-up line carrying the provider's own remedy):
 
 | Surface | Seam |
 |---|---|

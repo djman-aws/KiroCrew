@@ -195,7 +195,12 @@ never drift. Notable terminal (non-retryable) classes:
   failure again. It rides the reset-and-retry-once path unchanged, under the
   same one-retry budget and tool-activity gates, and is deliberately not
   `auth_required`: that tag offers the Kiro sign-in card, which signs in the
-  wrong identity for a harness that loads its own credentials.
+  wrong identity for a harness that loads its own credentials. The dashboard
+  and channel surfaces word the retry for credentials
+  (`CREDENTIAL_RELOAD_RETRY_NOTICE`), and when the fresh process fails too (the
+  helper itself is broken: an expired SSO login, a revoked role) the give-up
+  line carries the provider's own message (`credential_give_up_text`) instead
+  of "start a new chat", which would fail the same way.
 - **Preserved-thinking binding mismatch**: `AcpConversationBindingMismatch`
   (non-transient) means the stored native conversation carries thinking bound to
   another conversation prefix. A dashboard outer turn with no reply, thought or
