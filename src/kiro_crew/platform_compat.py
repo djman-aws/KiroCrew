@@ -694,6 +694,36 @@ def rename_noreplace(
     raise OSError(error, os.strerror(error), os.fspath(dst))
 
 
+#: ``renameat2``'s ``RENAME_EXCHANGE`` flag (Linux ``include/uapi/linux/fs.h``).
+_RENAME_EXCHANGE_FLAG = 2
+
+
+def rename_exchange(a: str | os.PathLike, b: str | os.PathLike) -> None:
+    """Atomically swap the two existing paths *a* and *b*, or raise.
+
+    Neither name is ever absent: both move in one kernel step. Linux only, through
+    the same ``renameat2`` seam as :func:`rename_noreplace` (the wrapper symbol, or
+    the raw syscall on glibc < 2.28). Raises :class:`NotImplementedError` where the
+    platform or filesystem cannot do it, so a caller can choose another path
+    instead of emulating the swap with two renames, which would leave *a* missing
+    for the moment between them.
+    """
+    fn = _RENAME_NOREPLACE_FN
+    if not IS_LINUX or fn is None:
+        raise NotImplementedError("atomic rename exchange is unavailable")
+    at_fdcwd = -100
+    ctypes.set_errno(0)
+    if fn(at_fdcwd, os.fsencode(a), at_fdcwd, os.fsencode(b), _RENAME_EXCHANGE_FLAG) == 0:
+        return
+    error = ctypes.get_errno()
+    unsupported = {errno.ENOSYS, errno.EINVAL}
+    unsupported.add(getattr(errno, "EOPNOTSUPP", errno.EINVAL))
+    unsupported.add(getattr(errno, "ENOTSUP", errno.EINVAL))
+    if error in unsupported:
+        raise NotImplementedError("filesystem lacks atomic rename exchange")
+    raise OSError(error, os.strerror(error), os.fspath(a))
+
+
 def publish_dir_noreplace(src: str | os.PathLike, dst: str | os.PathLike) -> None:
     """Atomically rename directory *src* to an ABSENT *dst*, never replacing.
 

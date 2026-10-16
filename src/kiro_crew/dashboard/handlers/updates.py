@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import collections
 import contextlib
-import functools
 import hmac
 import json
 import logging
@@ -1708,21 +1707,23 @@ async def _venv_pip_install(proj: str, state: DashboardState) -> bool:
         # handler below, which emits from arbitrary logger threads.
         loop.call_soon_threadsafe(_publish, "error" if error else "building", message)
 
-    rc = await loop.run_in_executor(
+    # Supervised and, on Linux, staged: the reinstall builds in a copy of the venv
+    # that replaces the live one only once it installed and imports, and
+    # cancelling this coroutine (a gateway shutdown does) kills that staged pip.
+    # Where it cannot stage, pip runs in place and is left to finish (see dep_sync).
+    rc = await dep_sync.sync_or_reinstall_supervised(
         subprocess_executor(),
-        functools.partial(
-            dep_sync.sync_or_reinstall,
-            Path(proj),
-            Path(sys.executable),
-            _emit,
-            # 600s rather than 120s on `pip install -e .`: the bound covers a
-            # dependency install that may be resolving and downloading a set this
-            # venv has never seen — and building a wheel for one of them — where
-            # 120s is a routine, not an exceptional, overrun.
-            # It is a real bound either way: dep_sync kills the pip child on
-            # expiry rather than letting the step hang on a wedged index.
-            timeout=600,
-        ),
+        Path(proj),
+        Path(sys.executable),
+        _emit,
+        # 600s rather than 120s on `pip install -e .`: the bound covers a
+        # dependency install that may be resolving and downloading a set this
+        # venv has never seen — and building a wheel for one of them — where
+        # 120s is a routine, not an exceptional, overrun.
+        # It is a real bound either way: dep_sync kills the pip child on
+        # expiry rather than letting the step hang on a wedged index.
+        timeout=600,
+        platform=platform_compat,
     )
     return rc == 0
 

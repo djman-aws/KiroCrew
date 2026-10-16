@@ -74,14 +74,21 @@ reachable.
 
 from __future__ import annotations
 
+import asyncio
 import configparser
+import contextlib
+import functools
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
+import threading
+import time
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 try:  # pragma: no cover - exercised by whichever interpreter runs this
     import tomllib as _toml
@@ -1158,6 +1165,7 @@ def sync_or_reinstall(
     timeout: float | None = None,
     *,
     allow_missing_package_repair: bool = False,
+    supervision: Supervision | None = None,
 ) -> int:
     """Bring ``target_py``'s venv up to date with ``repo``. 0 when it succeeded.
 
@@ -1189,7 +1197,18 @@ def sync_or_reinstall(
     A foreign origin is never allowed, and an absent package at any other target
     remains unproven and refused. This keeps the general ownership guard fail-closed
     while allowing the half-built state this repair path exists to recover.
+
+    ``supervision`` (a :class:`Supervision`, from the update routes, which
+    reinstall into the venv serving a running gateway) stages the editable
+    reinstall: it builds into a copy of the venv and swaps the copy in only once
+    it installed and imports, so a failed or interrupted pip leaves the live venv
+    exactly as it was (see :func:`_staged_reinstall`). Setting it while the staged
+    pip runs kills that pip's whole tree and discards the copy (the call returns
+    1). A target this step cannot stage (see :func:`_stageable_venv`: Linux venvs
+    only) is reinstalled in place, as before, and that in-place pip is never
+    killed by it, since killing it would leave the live venv half written.
     """
+    cancel = supervision
     # Establish that the venv about to be written to serves THIS checkout BEFORE
     # the branch, so both paths are covered. `sync()` asks the same question again
     # on the substitute path, and that duplication is deliberate: `sync()` is also
@@ -1234,6 +1253,10 @@ def sync_or_reinstall(
             "substituting a dependency-only sync for the editable reinstall",
             False,
         )
+        # Not handed the cancel: this installs into the live venv, and killing
+        # pip there would guarantee the half-written venv that letting it finish
+        # usually avoids. Only a staged install, whose writes go to a copy the
+        # cancel discards, is stopped (see `_editable_reinstall`'s callers).
         return sync(repo, target_py, emit, timeout=timeout)
 
     # The same requires-python gate the dependency-only substitute applies, and
@@ -1255,11 +1278,35 @@ def sync_or_reinstall(
                 repo,
             )
 
+    if cancel is not None:
+        root = _stageable_venv(target_py)
+        if root is not None:
+            return _staged_reinstall(repo, target_py, root, emit, timeout, cancel)
+        emit(
+            f"dep-sync: {target_py} is not in a Linux venv this step can stage, so "
+            "the editable reinstall runs in place",
+            False,
+        )
+    # In place: never handed the cancel, for the reason given on the locked branch.
+    return _editable_reinstall(repo, target_py, emit, timeout, None)
+
+
+def _editable_reinstall(
+    repo: Path,
+    target_py: Path,
+    emit: Emit,
+    timeout: float | None,
+    cancel: Supervision | None,
+) -> int:
+    """``pip install -e <repo>`` into *target_py*'s venv, then prove it landed."""
     # `-e <repo>` rather than `-e .` with a cwd: the target is explicit in the argv
     # instead of implied by the working directory this happens to run in.
     argv = [str(target_py), "-m", "pip", "install", "-e", str(repo), "--quiet"]
     try:
-        proc = subprocess.run(argv, capture_output=True, timeout=timeout)
+        proc = _run_pip(argv, timeout, cancel)
+    except InstallCancelled:
+        emit("dep-sync: pip install -e was cancelled and its pip was stopped", True)
+        return 1
     except subprocess.TimeoutExpired:
         emit(f"dep-sync: pip install -e timed out after {timeout}s", True)
         return 1
@@ -1278,8 +1325,8 @@ def sync_or_reinstall(
         # pip's 2 (UNKNOWN_ERROR) is REFUSED's value, and this install ran.
         return 1
     # A full editable reinstall has one success contract: pip returned 0 AND the
-    # artifacts it promises actually landed. The locked-script branch returned
-    # through ``sync`` above, so this postcondition never asks a dependency-only
+    # artifacts it promises actually landed. The locked-script branch returns
+    # through ``sync`` instead, so this postcondition never asks a dependency-only
     # substitute to rewrite the wrapper it deliberately leaves alone. Keeping the
     # check here closes every full-reinstall caller, including auto-update -- the
     # path whose interruption can create the half-built venv this guard repairs.
@@ -1304,6 +1351,524 @@ def sync_or_reinstall(
         )
         return 1
     return 0
+
+
+class InstallCancelled(Exception):
+    """The caller's ``cancel`` event was set while pip ran; pip has been killed."""
+
+
+#: How often a supervised pip is checked for its caller's cancel. Short enough
+#: that a gateway shutdown is not held up noticeably, long enough to cost nothing.
+_CANCEL_POLL_SECS = 0.25
+
+
+class Supervision(threading.Event):
+    """A cancel for one install, plus the platform seams supervising it needs.
+
+    Set it and the pip the install is running is killed with its whole tree.
+
+    ``platform`` is ``kiro_crew.platform_compat``, handed in by the caller rather
+    than imported here: this module must import with the standard library alone
+    (see the module docstring), and the process-tree kill, the atomic directory
+    exchange and the file lock each have one owner there. Only the gateway's
+    update routes supervise an install, and they already hold that module.
+    """
+
+    def __init__(self, platform: Any) -> None:
+        super().__init__()
+        self.platform = platform
+        #: The staging lock's descriptor while it is held. The staged pip
+        #: inherits it, so the lock is held for as long as that pip can still
+        #: write -- past a gateway killed outright, whose own descriptor the
+        #: kernel closes while the pip it started runs on.
+        self.lock_fd: int | None = None
+
+
+def _kill_process_group(proc: subprocess.Popen[bytes], platform: Any) -> None:
+    """Kill *proc* and everything it started, then reap it.
+
+    pip builds in children of its own (a PEP 517 backend, a compiler), and killing
+    only pip would leave those writing. On Windows a venv's ``python.exe`` is a
+    redirector that runs the base interpreter as a CHILD, so killing the
+    redirector alone would leave pip running. ``kill_popen_tree`` ends the whole
+    tree on both platforms. The reap is bounded, because a surviving grandchild
+    holding the inherited pipes would otherwise keep ``communicate`` waiting.
+    """
+    platform.kill_popen_tree(proc)
+    try:
+        proc.communicate(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def _run_pip(
+    argv: list[str], timeout: float | None, cancel: Supervision | None
+) -> subprocess.CompletedProcess[bytes]:
+    """Run pip with output captured, bounded by *timeout* and stopped by *cancel*.
+
+    Without *cancel* this is a plain bounded ``subprocess.run``. With it, the
+    child runs in its own process group and is polled, so a caller that stops
+    waiting can actually stop the install: an executor thread blocked in
+    ``subprocess.run`` cannot be interrupted from outside, so a cancelled await
+    alone would leave pip writing into the venv after the gateway exits.
+
+    Raises :class:`subprocess.TimeoutExpired` past *timeout* and
+    :class:`InstallCancelled` once *cancel* is set; the child is dead either way.
+    """
+    if cancel is None:
+        return subprocess.run(argv, capture_output=True, timeout=timeout)
+    if cancel.is_set():
+        raise InstallCancelled()
+    pc = cancel.platform
+    # Its own process group, so the kill on cancel reaches pip's whole tree.
+    proc = subprocess.Popen(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=pc.IS_POSIX,
+        creationflags=0 if pc.IS_POSIX else pc.CREATE_NEW_PROCESS_GROUP,
+        pass_fds=() if cancel.lock_fd is None else (cancel.lock_fd,),
+    )
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while True:
+        try:
+            out, err = proc.communicate(timeout=_CANCEL_POLL_SECS)
+        except subprocess.TimeoutExpired:
+            if cancel.is_set():
+                _kill_process_group(proc, pc)
+                raise InstallCancelled() from None
+            if deadline is not None and time.monotonic() >= deadline:
+                _kill_process_group(proc, pc)
+                raise subprocess.TimeoutExpired(argv, timeout or 0) from None
+            continue
+        return subprocess.CompletedProcess(argv, proc.returncode, out, err)
+
+
+#: Suffix of the sibling directory a staged reinstall builds in. Fixed rather than
+#: unique, so a stage an interrupted run left behind is found and removed by the
+#: next run instead of accumulating one venv-sized copy per interruption.
+_STAGE_SUFFIX = ".kirocrew-staging"
+
+#: Free space a staged reinstall keeps on top of the venv's own size: pip's build
+#: and download cache needs room too, and filling the disk would fail the in-place
+#: fallback as well.
+_STAGE_HEADROOM_BYTES = 256 * 1024 * 1024
+
+
+def _stageable_venv(target_py: Path) -> Path | None:
+    """The venv root to stage when *target_py* is a POSIX venv's interpreter.
+
+    The path is absolutized but NOT resolved: a venv interpreter is usually a
+    symlink to the base Python, and resolving it would name the base install.
+    Linux only. Windows locks the running gateway's ``python.exe``, so its venv
+    directory cannot be renamed while the gateway runs. macOS is left on the
+    in-place reinstall until its swap primitive and a copied venv's prefix
+    resolution are exercised on a macOS host. A venv root that is itself a
+    symlink is excluded too: swapping would replace the link, not the venv it
+    points at.
+    """
+    if not sys.platform.startswith("linux"):
+        return None
+    py = Path(os.path.abspath(target_py))
+    if py.parent.name != "bin":
+        return None
+    root = py.parent.parent
+    if root.is_symlink() or not (root / "pyvenv.cfg").is_file():
+        return None
+    # A process whose working directory is inside the venv would be left in the
+    # deleted previous venv after the swap: every later `os.getcwd()` raises, and
+    # a re-exec inherits the dead directory.
+    try:
+        cwd = Path(os.getcwd())
+    except OSError:
+        return None
+    if cwd == root or root in cwd.parents:
+        return None
+    # A venv that is its own mount (a container volume, say) cannot be renamed
+    # at all: the swap would fail after a whole copy and install.
+    try:
+        if os.path.ismount(root) or root.stat().st_dev != root.parent.stat().st_dev:
+            return None
+    except OSError:
+        return None
+    return root
+
+
+def _discard(path: Path) -> None:
+    """Remove a stage directory (or a stray link at its name) if present."""
+    if path.is_symlink() or path.is_file():
+        path.unlink(missing_ok=True)
+    elif path.exists():
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def _tree_size(root: Path) -> int:
+    """Bytes the files under *root* occupy, symlinks not followed."""
+    total = 0
+    for dirpath, _dirnames, filenames in os.walk(root):
+        for name in filenames:
+            try:
+                total += os.lstat(os.path.join(dirpath, name)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def _repoint_scripts(bin_dir: Path, built_in: Path, live: Path) -> None:
+    """Point every script pip wrote in the stage at the live venv's interpreter.
+
+    pip bakes the absolute interpreter path into each console script it writes,
+    so a script installed by the staged interpreter would keep calling the stage
+    after the swap removed it. Only the first three lines are rewritten: pip's
+    shebang, or its ``/bin/sh`` trampoline for a path too long for one, both live
+    there, and the rest of a file is never touched.
+
+    Raises :class:`OSError` when a script that needs the rewrite cannot be
+    rewritten: promoting the stage then would install a console script that calls
+    an interpreter the swap is about to delete.
+    """
+    old = os.fsencode(str(built_in / "bin")) + b"/"
+    new = os.fsencode(str(live / "bin")) + b"/"
+    for entry in bin_dir.iterdir():
+        if entry.is_symlink() or not entry.is_file():
+            continue
+        with entry.open("rb") as fh:
+            head = fh.read(4096)
+        if not head.startswith(b"#!") or old not in head:
+            continue
+        data = entry.read_bytes()
+        parts = data.split(b"\n", 3)
+        fixed = [p.replace(old, new) for p in parts[:3]] + parts[3:]
+        tmp = entry.with_name(entry.name + ".kirocrew-tmp")
+        try:
+            tmp.write_bytes(b"\n".join(fixed))
+            os.chmod(tmp, entry.stat().st_mode & 0o7777)
+            os.replace(tmp, entry)
+        finally:
+            tmp.unlink(missing_ok=True)
+
+
+def _exchange_dirs(a: Path, b: Path, platform: Any) -> None:
+    """Swap directories *a* and *b* in one step, so neither name is ever missing.
+
+    Through ``platform_compat.rename_exchange`` (``renameat2(RENAME_EXCHANGE)``,
+    by the raw syscall on glibc < 2.28). Raises :class:`ExchangeUnsupported`
+    where the platform or filesystem cannot do it. There is deliberately no
+    two-rename fallback: a process killed between the renames would leave the
+    live venv's path empty, which is worse than not staging.
+    """
+    try:
+        platform.rename_exchange(a, b)
+    except NotImplementedError as exc:
+        raise ExchangeUnsupported(f"no atomic directory exchange for {a}") from exc
+
+
+class ExchangeUnsupported(OSError):
+    """This platform or filesystem cannot swap two directories atomically."""
+
+
+def _exchange_supported(parent: Path, platform: Any) -> bool:
+    """Whether :func:`_exchange_dirs` works for directories inside *parent*.
+
+    Asked with two empty probe directories BEFORE anything is copied, so a
+    filesystem that refuses the exchange costs one probe, not a venv-sized copy.
+    """
+    try:
+        with tempfile.TemporaryDirectory(prefix=".kirocrew-exchange-", dir=parent) as tmp:
+            # Ignored first, so a probe left behind by a killed run stays out of
+            # the checkout's git status.
+            (Path(tmp) / ".gitignore").write_text("*\n", encoding="utf-8")
+            a, b = Path(tmp) / "a", Path(tmp) / "b"
+            a.mkdir()
+            b.mkdir()
+            (a / "a").touch()
+            _exchange_dirs(a, b, platform)
+            return (b / "a").exists()
+    except OSError:
+        return False
+
+
+@contextlib.contextmanager
+def _stage_lock(root: Path, holder: Supervision) -> Iterator[bool | OSError]:
+    """Hold the venv's staging lock for *holder*.
+
+    Yields True while held, False when another run holds it, and the error when
+    the lock cannot be taken at all (a filesystem without locks). While held, the
+    descriptor is on ``holder.lock_fd`` so the staged pip inherits it: an
+    ``flock`` lives on the open file, so the lock outlives a gateway killed
+    outright for exactly as long as the pip it started can still write.
+
+    The stage path is fixed per venv, so two staged reinstalls of one venv (two
+    update requests) would otherwise delete and rebuild each other's stage, and one
+    could swap in a copy the other had only half made. The lock orders STAGED runs
+    only: the in-place writers (``kirocrew update``, the bootstrap repair, the
+    auto-update's core-dependency repair) do not take it, exactly as two in-place
+    pips into one venv never excluded each other. The kernel releases the lock
+    once its last holder has exited, so a crashed run never leaves the venv
+    locked for longer than its pip lives.
+
+    The lock is taken on the directory that HOLDS the venv, not on a lock file:
+    that directory is usually the checkout, where a new file would show as
+    untracked and make the dashboard update refuse a dirty tree, and it is the one
+    path the swap never replaces. A file inside the venv would move with it.
+    """
+    try:
+        fd = os.open(root.parent, os.O_RDONLY)
+    except OSError as exc:
+        yield exc
+        return
+    try:
+        try:
+            held: bool | OSError = holder.platform.platform_lock_compat.try_acquire_lock_or_raise(
+                fd, exclusive=True
+            )
+        except OSError as exc:
+            held = exc
+        if held is True:
+            holder.lock_fd = fd
+        yield held
+    finally:
+        holder.lock_fd = None
+        os.close(fd)
+
+
+def _staged_reinstall(
+    repo: Path,
+    target_py: Path,
+    root: Path,
+    emit: Emit,
+    timeout: float | None,
+    cancel: Supervision,
+) -> int:
+    """Reinstall into a copy of the venv at *root*, then swap the copy in.
+
+    The live venv is not written until the copy has installed AND imports, so pip
+    failing, timing out, being cancelled or the process dying mid-install leaves
+    the venv the running gateway serves from exactly as it was. Only the swap
+    touches it, and the swap is a single rename where the platform offers one.
+
+    The copy keeps file times (``copy2``), so bytecode caches stay valid, and keeps
+    symlinks as links, so the venv's interpreter still points at the base Python.
+    Without an atomic exchange, without room for a copy, or when the copy itself
+    fails, this falls back to the in-place reinstall rather than refuse an update
+    that worked before staging. Another run already staging the same venv is a
+    refusal, not a fallback: reinstalling in place under it would race its swap.
+    """
+    py = Path(os.path.abspath(target_py))
+    if not _exchange_supported(root.parent, cancel.platform):
+        emit(
+            f"dep-sync: the filesystem holding {root} cannot swap directories "
+            "atomically, so the reinstall runs in place",
+            False,
+        )
+        return _editable_reinstall(repo, py, emit, timeout, None)
+    with _stage_lock(root, cancel) as locked:
+        if locked is False:
+            # REFUSED, not 1: nothing was touched, and a caller reads any other
+            # failure as an install that ran and needs repairing -- which would
+            # write into the venv the other run is staging.
+            emit(
+                f"dep-sync: {root} was not reinstalled: another reinstall is already " "staging it",
+                True,
+            )
+            return REFUSED
+        if locked is not True:
+            # A filesystem that cannot lock at all cannot stage safely either; it
+            # gets the in-place reinstall it had before staging, like every other
+            # case this step cannot stage.
+            return _in_place(
+                repo,
+                py,
+                emit,
+                timeout,
+                cancel,
+                f"{root} cannot be locked for staging ({locked})",
+            )
+        return _staged_reinstall_locked(repo, py, root, emit, timeout, cancel)
+
+
+def _in_place(
+    repo: Path,
+    py: Path,
+    emit: Emit,
+    timeout: float | None,
+    cancel: Supervision,
+    why: str,
+) -> int:
+    """Fall back from staging to the in-place reinstall, unless cancelled first.
+
+    A cancel that lands before the fallback starts means the caller has already
+    stopped: starting a fresh pip in the live venv then would be exactly the
+    unsupervised writer the cancel exists to prevent. Once started, the in-place
+    pip is never killed (see :func:`sync_or_reinstall`).
+    """
+    if cancel.is_set():
+        emit("dep-sync: the reinstall was cancelled before it started", True)
+        return 1
+    emit(f"dep-sync: {why}, so the reinstall runs in place", False)
+    return _editable_reinstall(repo, py, emit, timeout, None)
+
+
+def _site_snapshot(root: Path) -> list[tuple[str, str, int]]:
+    """What is installed in *root*'s site-packages, by entry name and mtime.
+
+    Taken when the venv is copied and again just before the swap: anything
+    another writer installed into the live venv in between (an app install, a
+    tool's own ``pip install``) changes it, and swapping then would silently
+    undo that install.
+    """
+    entries: list[tuple[str, str, int]] = []
+    for site in sorted(root.glob("lib/python*/site-packages")):
+        try:
+            for entry in site.iterdir():
+                entries.append((str(site), entry.name, entry.lstat().st_mtime_ns))
+        except OSError:
+            entries.append((str(site), "<unreadable>", 0))
+    return sorted(entries)
+
+
+def _staged_reinstall_locked(
+    repo: Path,
+    py: Path,
+    root: Path,
+    emit: Emit,
+    timeout: float | None,
+    cancel: Supervision,
+) -> int:
+    """The body of :func:`_staged_reinstall`, run while holding the stage lock."""
+    stage = root.with_name(root.name + _STAGE_SUFFIX)
+    _discard(stage)
+    if cancel.is_set():
+        emit("dep-sync: the reinstall was cancelled before it started", True)
+        return 1
+
+    try:
+        needed = _tree_size(root) + _STAGE_HEADROOM_BYTES
+        free = shutil.disk_usage(root.parent).free
+    except OSError:
+        needed, free = 0, 0
+    if free < needed:
+        return _in_place(
+            repo, py, emit, timeout, cancel, f"not enough free space beside {root} to stage"
+        )
+    installed = _site_snapshot(root)
+    try:
+        # The stage usually sits in the checkout, beside a venv the checkout's
+        # .gitignore matches by its own name only. A `*` ignore file written
+        # FIRST keeps git from ever listing the stage, a half-made one left by a
+        # killed run included -- the dashboard update refuses a dirty tree.
+        stage.mkdir()
+        (stage / ".gitignore").write_text("*\n", encoding="utf-8")
+        shutil.copytree(root, stage, symlinks=True, dirs_exist_ok=True)
+    except (OSError, shutil.Error) as exc:
+        _discard(stage)
+        return _in_place(repo, py, emit, timeout, cancel, f"could not stage the venv ({exc})")
+
+    rc = _editable_reinstall(repo, stage / "bin" / py.name, emit, timeout, cancel)
+    if rc != 0:
+        _discard(stage)
+        emit(f"dep-sync: the staged reinstall did not complete; {root} is unchanged", True)
+        return rc
+    try:
+        _repoint_scripts(stage / "bin", stage, root)
+    except OSError as exc:
+        _discard(stage)
+        emit(
+            f"dep-sync: could not point the staged scripts at {root} ({exc}); "
+            f"{root} is unchanged",
+            True,
+        )
+        return 1
+    if cancel.is_set():
+        _discard(stage)
+        emit(f"dep-sync: the reinstall was cancelled; {root} is unchanged", True)
+        return 1
+    if _site_snapshot(root) != installed:
+        # Someone installed into the live venv while the copy was being built;
+        # the swap would undo that. In place, pip applies the revision on top.
+        _discard(stage)
+        return _in_place(
+            repo, py, emit, timeout, cancel, f"{root} changed while the reinstall was staged"
+        )
+    # After the swap the stage name holds the OLD venv, which a run killed before
+    # the final cleanup would leave behind. Give the live venv the same `*`
+    # ignore file (what uv and Python 3.13+ venvs already carry) so that leftover
+    # is ignored by git too, whichever venv ends up under that name.
+    gitignore = root / ".gitignore"
+    if not gitignore.exists():
+        with contextlib.suppress(OSError):
+            gitignore.write_text("*\n", encoding="utf-8")
+    try:
+        _exchange_dirs(root, stage, cancel.platform)
+    except OSError as exc:
+        # Nothing was swapped, so the live venv is the old one: reinstall it in
+        # place, as before staging existed, rather than leave the new revision
+        # without its dependencies on every attempt.
+        _discard(stage)
+        return _in_place(
+            repo, py, emit, timeout, cancel, f"could not swap the staged venv in ({exc})"
+        )
+    # The stage name now holds the previous venv. Removing it is cleanup: a
+    # leftover is removed by the next staged run.
+    _discard(stage)
+    return 0
+
+
+#: How long a cancelled supervised install is given to stop its pip before the
+#: cancel is passed on. Killing a process group takes milliseconds; this only
+#: bounds a pathological wait so a shutdown is never held up by it.
+_CANCEL_GRACE_SECS = 15.0
+
+
+async def sync_or_reinstall_supervised(
+    executor: Any,
+    repo: Path,
+    target_py: Path,
+    emit: Emit,
+    *,
+    timeout: float | None,
+    platform: Any,
+) -> int:
+    """:func:`sync_or_reinstall`, staged, on *executor*, stopped by a cancel.
+
+    *platform* is ``kiro_crew.platform_compat`` (see :class:`Supervision`).
+
+    For the update routes, which move the checkout and then reinstall into the
+    venv of the running gateway. Cancelling the awaiting task (a gateway shutdown
+    does) sets the install's cancel. A STAGED pip is then killed and its copy
+    discarded, and this waits for that before the cancel propagates, so the live
+    venv is never written. An in-place install (where staging is unavailable) is
+    left to finish, as it always was: killing it would leave the live venv half
+    written, so that pip can still outlive the caller.
+    """
+    stop = Supervision(platform)
+    started = threading.Event()
+    install = functools.partial(
+        sync_or_reinstall, repo, target_py, emit, timeout=timeout, supervision=stop
+    )
+
+    def job() -> int:
+        # `started` is set BEFORE `stop` is read, and the canceller sets `stop`
+        # BEFORE it reads `started`: so either the canceller sees the job started
+        # and waits for it, or the job sees the cancel and never installs. A job
+        # still queued behind a busy pool when the cancel lands therefore no-ops
+        # when it finally runs, without the canceller waiting for the pool.
+        started.set()
+        if stop.is_set():
+            return 1
+        return int(install())
+
+    fut = asyncio.get_running_loop().run_in_executor(executor, job)
+    try:
+        return int(await asyncio.shield(fut))
+    except asyncio.CancelledError:
+        stop.set()
+        if started.is_set():
+            try:
+                await asyncio.wait_for(asyncio.shield(fut), _CANCEL_GRACE_SECS)
+            except (Exception, asyncio.CancelledError):
+                pass
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:

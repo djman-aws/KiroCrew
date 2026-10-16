@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import asyncio
     import contextlib
-    import functools
     import importlib
     import importlib.util
     import os
@@ -731,15 +730,18 @@ async def _auto_apply_update(self: GatewayOrchestrator, *, mandatory: bool = Fal
         # while a live pip kept writing to the venv and permanently occupied a
         # subprocess_executor thread. Passing the deadline down means the child
         # is actually killed and the thread is released.
-        pip_rc = await asyncio.get_running_loop().run_in_executor(
+        #
+        # Supervised and, on Linux, staged: the reinstall builds in a copy of the
+        # venv that replaces the live one only once it installed and imports, and
+        # a shutdown that cancels this task kills that staged pip. Where it
+        # cannot stage, pip runs in place and is left to finish (see dep_sync).
+        pip_rc = await dep_sync.sync_or_reinstall_supervised(
             subprocess_executor(),
-            functools.partial(
-                dep_sync.sync_or_reinstall,
-                Path(proj),
-                Path(sys.executable),
-                lambda message, error: pip_messages.append((message, error)),
-                timeout=600,
-            ),
+            Path(proj),
+            Path(sys.executable),
+            lambda message, error: pip_messages.append((message, error)),
+            timeout=600,
+            platform=platform_compat,
         )
         if pip_rc != 0:
             # The tree moved but its dependencies did not, and this step

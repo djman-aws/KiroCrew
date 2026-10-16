@@ -633,9 +633,15 @@ installer's own 300 s timeout.
 
 Not covered here:
 
-- The git route reinstalls through `dep_sync.sync_or_reinstall` in an executor
-  thread, and a cancelled await does not stop that thread, so its pip can
-  outlive a shutdown.
+- The git route reinstalls through `dep_sync.sync_or_reinstall_supervised` in an
+  executor thread. On Linux it builds in a copy of the venv
+  (`<venv>.kirocrew-staging`) and swaps it in atomically only once it installs
+  and imports; a cancel kills that pip and discards the copy, so the live venv is
+  never half written. Where it cannot stage (macOS, Windows, a venv on its own
+  mount, no atomic exchange, no room, no lock), it reinstalls in place and a
+  cancel does not kill pip: killing it there would guarantee the half-written
+  venv that letting it finish usually avoids, so that pip can still outlive a
+  shutdown.
 - A policy apply started by `POST /api/update` runs in the request handler. The
   shutdown does not stop it first.
 

@@ -1006,6 +1006,10 @@ BENIGN_SPAWNS: frozenset[str] = frozenset(
         # the repo from the operator-configured checkout. Sandboxing it now would
         # refuse a step every platform has always run unsandboxed.
         #
+        # The editable reinstall spawns through _run_pip, which adds only the
+        # timeout and, for a staged install, the caller's cancel to the argv it is
+        # passed; the grounds above are the ones that cover it.
+        #
         # The three interpreter probes (interpreter_version,
         # installed_package_origin, installed_console_script_target) share one
         # fixed-argv helper, _probe_interpreter, which is where their single
@@ -1024,7 +1028,7 @@ BENIGN_SPAWNS: frozenset[str] = frozenset(
         # is unisolated on purpose, because the relaunch is.
         "dep_sync.py::_probe_relaunch_import",
         "dep_sync.py::sync",
-        "dep_sync.py::sync_or_reinstall",
+        "dep_sync.py::_run_pip",
         # _git_blob_text is the pre-mutation interpreter-floor gate's one read:
         # `<git> show <ref>:<fixed filename>` (pyproject.toml / setup.cfg) in the
         # operator-configured checkout, so an update can refuse a revision the
