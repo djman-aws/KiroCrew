@@ -38,6 +38,8 @@ import { FilePreviewStrip } from '../components/chat-input/FilePreviewStrip'
 import { buildOutgoingTurn } from '../chat-core/composer/outgoingTurn'
 import { storeSentPastes, useComposerPastes } from '../chat-core/composer/composerPastes'
 import { usePasteTokens } from '../chat-core/composer/pasteEditor'
+import { useUndoHistory } from '../chat-core/composer/undoHistory'
+import type { ComposerControl } from '../components/composerControl'
 import PasteHighlightLayer from '../components/PasteHighlightLayer'
 import PasteHoverLayer from '../components/PasteHoverLayer'
 import { isRawPasteChord } from '../components/composerPastePolicy'
@@ -248,14 +250,18 @@ const userRowKey = (m: ChatMessage) => (m.meta?.mid as string | undefined) ?? m.
 /** Whether the poll shows THIS optimistic send. The default path stamps
  *  `sendId` on the wire, so identity is the proof. A host `onSend` posts on
  *  its own endpoint and no `sendId` comes back, so its fallback is a user row
- *  with the same text that was not in the transcript when the send went out. */
+ *  with the same text, ignoring surrounding whitespace, that was not in the
+ *  transcript when the send went out. */
 function isPendingAcked(
   p: { sendId: string; queueId?: string; viaHost: boolean; text: string; before: ReadonlySet<string> },
   messages: ChatMessage[],
   queue: unknown,
 ): boolean {
   if (messages.some(m => isOwnUserRow(m, p.sendId)) || queueHasEntry(queue, p.queueId)) return true
-  return p.viaHost && messages.some(m => m.role === 'user' && m.content === p.text && !p.before.has(userRowKey(m)))
+  // Compared trimmed: a host endpoint may strip the text it stores, and an
+  // expanded paste can end in whitespace the composer text never had.
+  const sent = p.text.trim()
+  return p.viaHost && messages.some(m => m.role === 'user' && m.content.trim() === sent && !p.before.has(userRowKey(m)))
 }
 
 /** Rows per page of the bounded poll — the slot-detail handler's own default,
@@ -359,9 +365,16 @@ function ChatEmbed({
   // An embed is as long-lived as a ChatPane, so a one-shot read would leave it
   // on the old size after the user changes the setting elsewhere (ChatPane.tsx
   // follows the same `mc-config-changed`/`focus` reload).
+  // "Show pasted text in full" follows the same reload, so a changed setting
+  // applies to the next paste without a remount.
   const [messageFontSize, setMessageFontSize] = useState(() => loadChatConfig().messageFontSize)
+  const [showFullPastes, setShowFullPastes] = useState(() => loadChatConfig().showFullPastes)
   useEffect(() => {
-    const reload = () => setMessageFontSize(loadChatConfig().messageFontSize)
+    const reload = () => {
+      const cfg = loadChatConfig()
+      setMessageFontSize(cfg.messageFontSize)
+      setShowFullPastes(cfg.showFullPastes)
+    }
     window.addEventListener('focus', reload)
     window.addEventListener('mc-config-changed', reload)
     return () => { window.removeEventListener('focus', reload); window.removeEventListener('mc-config-changed', reload) }
@@ -567,12 +580,12 @@ function ChatEmbed({
 
   /** Long-paste collapse, the main chat's own (the chat-core Paste atom): a
    *  large paste becomes a `[ Paste #N · M lines ]` chip in the draft backed
-   *  by a block here, the chip deletes and steps as one unit, a click (a tap
-   *  on touch) expands it, and the send expands it on the wire. The blocks
+   *  by a block here, the chip deletes and steps as one unit, a double-click
+   *  (a tap on touch) expands it, and the send expands it on the wire. The blocks
    *  ride the `Composer` root (`pastes`). Respects the user's "Show pasted
-   *  text in full" chat setting, as the main composer does. */
+   *  text in full" chat setting (`showFullPastes`, read above), as the main
+   *  composer does. */
   const pastes = useComposerPastes()
-  const showFullPastes = useMemo(() => loadChatConfig().showFullPastes, [])
   const pasteFromUserRef = useRef(false)
   const noteCaret = useCallback(() => {}, [])
   const ime = useMemo(() => ({ isComposing }), [isComposing])
@@ -580,6 +593,28 @@ function ChatEmbed({
     value: draft, onChange: setDraft, pasteBlocks: pastes.blocks, onPasteBlocksChange: pastes.set, showFullPastes,
     inputRef: textareaRef as React.RefObject<HTMLTextAreaElement>, valueRef: draftRef, valueFromUserRef: pasteFromUserRef,
     recordCaret: noteCaret, ime,
+  })
+  /** Undo/redo over the draft, the main composer's own (`useUndoHistory`).
+   *  Each snapshot carries the paste blocks, so Cmd/Ctrl+Z after deleting a
+   *  chip brings back its content and not just the token text, which would
+   *  otherwise go out on the wire as a literal. */
+  const pasteBlocksRef = useRef(pastes.blocks)
+  pasteBlocksRef.current = pastes.blocks
+  const notOptimizingRef = useRef(false)
+  const embedControl = useCallback((): ComposerControl | null => {
+    const el = textareaRef.current
+    if (!el) return null
+    return {
+      focus: () => el.focus(),
+      getRootElement: () => el,
+      getSelection: () => ({ start: el.selectionStart, end: el.selectionEnd }),
+      setSelection: (start, end = start, options) => { if (options?.focus) el.focus(); el.setSelectionRange(start, end) },
+    }
+  }, [textareaRef])
+  const undo = useUndoHistory({
+    value: draft, pasteBlocks: pastes.blocks, autoFocusKey: slotKey, composerControl: embedControl, pasteBlocksRef,
+    valueFromUserRef: pasteFromUserRef, optimizingRef: notOptimizingRef, onChange: setDraft, onPasteBlocksChange: pastes.set,
+    inputRef: textareaRef as React.RefObject<HTMLTextAreaElement>, ime,
   })
   // An "unconfirmed" notice answers the question "did it go out?". Proof is a
   // USER row for THIS send anywhere in the polled window, recognised by
@@ -1237,6 +1272,8 @@ function ChatEmbed({
                 pasteEditor.noteKeyDown(e)
                 // Cmd/Ctrl+Shift+V pastes the text in full, once.
                 pasteEditor.rawPasteRef.current = isRawPasteChord(e)
+                // Undo/redo first, so a restored chip gets its block back.
+                if (undo.handleUndoKey(e)) return
                 // A paste chip deletes and steps as one unit, before Enter.
                 if (pasteEditor.handleTokenKey(e)) return
                 submitOnEnter(e, () => send())
