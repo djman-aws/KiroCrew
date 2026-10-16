@@ -55,6 +55,15 @@ from kiro_crew.crew_log.projection_internal import (
     _outline_step,
 )
 from kiro_crew.crew_log.projection_ledger import _ledger_render, _ledger_start, _ledger_step
+from kiro_crew.crew_log.projection_otel_usage import (
+    OTEL_USAGE_FOLD_NAME,
+    OTEL_USAGE_TYPES,
+    _otel_usage_copy,
+    _otel_usage_render,
+    _otel_usage_rows,
+    _otel_usage_start,
+    _otel_usage_step,
+)
 from kiro_crew.crew_log.projection_radar import _radar_render, _radar_start, _radar_step
 from kiro_crew.crew_log.projection_side_panel import (
     TIMELINE_TYPES,
@@ -501,6 +510,23 @@ _FOLDS: Final[dict[str, _Fold]] = {
         _outline_render,
         affects=OUTLINE_TYPES,
         copy_state=_outline_copy,
+    ),
+    # Keyed by one SESSION and NOT advertised, for the reason stated beside
+    # :data:`INTERNAL_PROJECTION_NAMES`: its one reader is the OTel export
+    # subscriber, which asks for it by name through the crew-log bus rather than
+    # through the side panel. ``affects`` is the two entry types
+    # :mod:`~kiro_crew.crew_log.projection_otel_usage` reads; both are small and rare
+    # next to a session's message bodies, so ``copy_state`` is spelled out rather
+    # than falling back to a deep copy of a state that is already two scalars and a
+    # small dict.
+    OTEL_USAGE_FOLD_NAME: _Fold(
+        OTEL_USAGE_FOLD_NAME,
+        _otel_usage_start,
+        _otel_usage_step,
+        _otel_usage_render,
+        affects=OTEL_USAGE_TYPES,
+        copy_state=_otel_usage_copy,
+        count_rows=_otel_usage_rows,
     ),
     # The SLOT-keyed folds each answer to exactly ONE entry type -- their ``step``
     # returns on its first line for anything else -- so ``affects`` names that type and
