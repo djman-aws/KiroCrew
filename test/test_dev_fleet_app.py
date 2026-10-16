@@ -1,4 +1,5 @@
 """Tests for the dev-fleet native dashboard handler."""
+
 from __future__ import annotations
 
 import asyncio
@@ -33,6 +34,7 @@ from kiro_crew.apps.builtins.dev_fleet import http_api as http_api_mod
 from kiro_crew.apps.builtins.dev_fleet import repository as repository_mod
 from kiro_crew.apps.builtins.dev_fleet import runtime as runtime_mod
 from kiro_crew.apps.builtins.dev_fleet import worktree_ops as worktree_ops_mod
+from kiro_crew.testing.wait import async_wait_until, await_until
 
 
 # --- worktree porcelain parsing ---
@@ -180,7 +182,8 @@ async def test_discover_worktrees_keeps_prunable_main():
     with patch.object(runtime_mod, "_run_cmd", new=AsyncMock(return_value=(0, stdout, ""))):
         entries = await mod._discover_worktrees()
     assert [e["path"] for e in entries] == [
-        "/home/user/kirocrew", "/home/user/kirocrew-wt-alive",
+        "/home/user/kirocrew",
+        "/home/user/kirocrew-wt-alive",
     ]
     assert entries[0]["is_main"] is True
 
@@ -201,7 +204,9 @@ async def test_git_ahead_counts_plus_lines():
     from kiro_crew.apps.builtins.dev_fleet.server import _git_ahead
 
     cherry_output = "+ abc1234\n+ def5678\n- ghi9012\n"
-    with patch("kiro_crew.apps.builtins.dev_fleet.repository._git", new_callable=AsyncMock) as mock_git:
+    with patch(
+        "kiro_crew.apps.builtins.dev_fleet.repository._git", new_callable=AsyncMock
+    ) as mock_git:
         mock_git.return_value = cherry_output
         result = await _git_ahead("/fake/path")
     assert result == 2
@@ -211,7 +216,9 @@ async def test_git_ahead_counts_plus_lines():
 async def test_git_ahead_returns_none_on_failure():
     from kiro_crew.apps.builtins.dev_fleet.server import _git_ahead
 
-    with patch("kiro_crew.apps.builtins.dev_fleet.repository._git", new_callable=AsyncMock) as mock_git:
+    with patch(
+        "kiro_crew.apps.builtins.dev_fleet.repository._git", new_callable=AsyncMock
+    ) as mock_git:
         mock_git.return_value = None
         result = await _git_ahead("/fake/path")
     assert result is None
@@ -223,12 +230,23 @@ async def test_prunable_merged_clean():
     """PR merged + clean -> ok:true WITHOUT requiring ahead==0 (squash-safe)."""
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
-    with patch.object(fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock, return_value={"state": "MERGED"}), \
-         patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=3), \
-         patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False), \
-         patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="a" * 40), \
-         patch.object(fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="a" * 40), \
-         patch.object(repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"):
+    with (
+        patch.object(
+            fleet_state_mod,
+            "_pr_status_cached",
+            new_callable=AsyncMock,
+            return_value={"state": "MERGED"},
+        ),
+        patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=3),
+        patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False),
+        patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="a" * 40),
+        patch.object(
+            fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="a" * 40
+        ),
+        patch.object(
+            repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"
+        ),
+    ):
         v = await mod._prunable("/fake/path", "feat-branch")
     assert v["ok"] is True
     assert v["code"] == "merged"
@@ -243,12 +261,23 @@ async def test_prunable_merged_squash_sim():
     """
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
-    with patch.object(fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock, return_value={"state": "MERGED"}), \
-         patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=5), \
-         patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False), \
-         patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="b" * 40), \
-         patch.object(fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="b" * 40), \
-         patch.object(repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"):
+    with (
+        patch.object(
+            fleet_state_mod,
+            "_pr_status_cached",
+            new_callable=AsyncMock,
+            return_value={"state": "MERGED"},
+        ),
+        patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=5),
+        patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False),
+        patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="b" * 40),
+        patch.object(
+            fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="b" * 40
+        ),
+        patch.object(
+            repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"
+        ),
+    ):
         v = await mod._prunable("/fake/path", "feat-branch")
     assert v["ok"] is True
     assert v["code"] == "merged"
@@ -258,10 +287,19 @@ async def test_prunable_merged_squash_sim():
 async def test_prunable_merged_dirty_rejected():
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
-    with patch.object(fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock, return_value={"state": "MERGED"}), \
-         patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=3), \
-         patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=True), \
-         patch.object(repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"):
+    with (
+        patch.object(
+            fleet_state_mod,
+            "_pr_status_cached",
+            new_callable=AsyncMock,
+            return_value={"state": "MERGED"},
+        ),
+        patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=3),
+        patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=True),
+        patch.object(
+            repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"
+        ),
+    ):
         v = await mod._prunable("/fake/path", "feat-branch")
     assert v["ok"] is False
     assert v["code"] == "merged_dirty"
@@ -271,10 +309,19 @@ async def test_prunable_merged_dirty_rejected():
 async def test_prunable_active_unmerged():
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
-    with patch.object(fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock, return_value={"state": "OPEN"}), \
-         patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=5), \
-         patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False), \
-         patch.object(repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"):
+    with (
+        patch.object(
+            fleet_state_mod,
+            "_pr_status_cached",
+            new_callable=AsyncMock,
+            return_value={"state": "OPEN"},
+        ),
+        patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=5),
+        patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False),
+        patch.object(
+            repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"
+        ),
+    ):
         v = await mod._prunable("/fake/path", "feat-branch")
     assert v["ok"] is False
     assert v["code"] == "active"
@@ -289,14 +336,24 @@ async def test_remove_refuses_when_branch_oid_diverged():
     full_head = "a" * 40
     cache = AsyncMock(return_value={"state": "MERGED"})
     git = AsyncMock(return_value=full_head)
-    with patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                      return_value=({"path": "/fake/wt", "branch": "feat-x", "is_main": False}, None)), \
-         patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False), \
-         patch.object(fleet_state_mod, "_pr_status_cached", cache), \
-         patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=3), \
-         patch.object(repository_mod, "_git", git), \
-         patch.object(fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="b" * 40), \
-         patch.object(repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"):
+    with (
+        patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": "/fake/wt", "branch": "feat-x", "is_main": False}, None),
+        ),
+        patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False),
+        patch.object(fleet_state_mod, "_pr_status_cached", cache),
+        patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=3),
+        patch.object(repository_mod, "_git", git),
+        patch.object(
+            fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="b" * 40
+        ),
+        patch.object(
+            repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"
+        ),
+    ):
         result = await mod._worktree_remove("feat-x", force=False)
     assert result["ok"] is False
     assert "OID diverged" in result["error"]
@@ -309,17 +366,32 @@ async def test_remove_succeeds_when_oid_matches():
     """Squash-safe race guard passes when OIDs match."""
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
-    with patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                      return_value=({"path": "/fake/wt", "branch": "feat-x", "is_main": False}, None)), \
-         patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False), \
-         patch.object(fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock, return_value={"state": "MERGED"}), \
-         patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=3), \
-         patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="aaa1111"), \
-         patch.object(fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="aaa1111"), \
-         patch.object(runtime_mod, "_load_cfg", return_value=None), \
-         patch.object(runtime_mod, "_POD_AVAILABLE", False), \
-         patch.object(runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(0, "", "")), \
-         patch.object(repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"):
+    with (
+        patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": "/fake/wt", "branch": "feat-x", "is_main": False}, None),
+        ),
+        patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False),
+        patch.object(
+            fleet_state_mod,
+            "_pr_status_cached",
+            new_callable=AsyncMock,
+            return_value={"state": "MERGED"},
+        ),
+        patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=3),
+        patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="aaa1111"),
+        patch.object(
+            fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="aaa1111"
+        ),
+        patch.object(runtime_mod, "_load_cfg", return_value=None),
+        patch.object(runtime_mod, "_POD_AVAILABLE", False),
+        patch.object(runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(0, "", "")),
+        patch.object(
+            repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"
+        ),
+    ):
         result = await mod._worktree_remove("feat-x", force=False)
     assert result["ok"] is True
 
@@ -338,18 +410,33 @@ async def test_remove_proceeds_when_session_bus_absent():
         backend_threads.append(threading.get_ident())
         raise PodBackendAbsent("no session bus")
 
-    with patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                      return_value=({"path": "/fake/wt", "branch": "feat-x", "is_main": False}, None)), \
-         patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False), \
-         patch.object(fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock, return_value={"state": "MERGED"}), \
-         patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=1), \
-         patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="aaa1111"), \
-         patch.object(fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="aaa1111"), \
-         patch.object(runtime_mod, "_load_cfg", return_value=object()), \
-         patch.object(runtime_mod, "_POD_AVAILABLE", True), \
-         patch.object(runtime_mod.rt, "require_backend", side_effect=absent_backend), \
-         patch.object(runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(0, "", "")), \
-         patch.object(repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"):
+    with (
+        patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": "/fake/wt", "branch": "feat-x", "is_main": False}, None),
+        ),
+        patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False),
+        patch.object(
+            fleet_state_mod,
+            "_pr_status_cached",
+            new_callable=AsyncMock,
+            return_value={"state": "MERGED"},
+        ),
+        patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=1),
+        patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="aaa1111"),
+        patch.object(
+            fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="aaa1111"
+        ),
+        patch.object(runtime_mod, "_load_cfg", return_value=object()),
+        patch.object(runtime_mod, "_POD_AVAILABLE", True),
+        patch.object(runtime_mod.rt, "require_backend", side_effect=absent_backend),
+        patch.object(runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(0, "", "")),
+        patch.object(
+            repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"
+        ),
+    ):
         result = await mod._worktree_remove("feat-x", force=False)
     assert result["ok"] is True
     assert len(backend_threads) == 2
@@ -413,18 +500,33 @@ async def test_remove_still_fails_on_non_pod_exceptions():
     """Non-PodError exceptions (e.g. OSError, TimeoutError) still refuse removal."""
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
-    with patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                      return_value=({"path": "/fake/wt", "branch": "feat-x", "is_main": False}, None)), \
-         patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False), \
-         patch.object(fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock, return_value={"state": "MERGED"}), \
-         patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=1), \
-         patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="aaa1111"), \
-         patch.object(fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="aaa1111"), \
-         patch.object(runtime_mod, "_load_cfg", return_value=object()), \
-         patch.object(runtime_mod, "_POD_AVAILABLE", True), \
-         patch.object(runtime_mod.rt, "require_backend", return_value=None), \
-         patch.object(runtime_mod.rt, "active_names", side_effect=OSError("disk on fire")), \
-         patch.object(repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"):
+    with (
+        patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": "/fake/wt", "branch": "feat-x", "is_main": False}, None),
+        ),
+        patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False),
+        patch.object(
+            fleet_state_mod,
+            "_pr_status_cached",
+            new_callable=AsyncMock,
+            return_value={"state": "MERGED"},
+        ),
+        patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=1),
+        patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="aaa1111"),
+        patch.object(
+            fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="aaa1111"
+        ),
+        patch.object(runtime_mod, "_load_cfg", return_value=object()),
+        patch.object(runtime_mod, "_POD_AVAILABLE", True),
+        patch.object(runtime_mod.rt, "require_backend", return_value=None),
+        patch.object(runtime_mod.rt, "active_names", side_effect=OSError("disk on fire")),
+        patch.object(
+            repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"
+        ),
+    ):
         result = await mod._worktree_remove("feat-x", force=False)
     assert result["ok"] is False
     assert "cannot verify pod state" in result["error"]
@@ -444,23 +546,39 @@ def _remove_stubs(pod_root, **extra):
     test that overrides ``backend`` gets exactly one ``require_backend`` patch.
     """
     base = {
-        "find": patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                             return_value=({"path": "/fake/wt", "branch": "feat-x",
-                                            "is_main": False}, None)),
-        "dirty": patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False),
-        "pr": patch.object(fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock,
-                           return_value={"state": "MERGED"}),
-        "own": patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=1),
+        "find": patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": "/fake/wt", "branch": "feat-x", "is_main": False}, None),
+        ),
+        "dirty": patch.object(
+            repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False
+        ),
+        "pr": patch.object(
+            fleet_state_mod,
+            "_pr_status_cached",
+            new_callable=AsyncMock,
+            return_value={"state": "MERGED"},
+        ),
+        "own": patch.object(
+            repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=1
+        ),
         "git": patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="aaa1111"),
-        "head": patch.object(fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock,
-                             return_value="aaa1111"),
-        "cfg": patch.object(runtime_mod, "_load_cfg",
-                            return_value=SimpleNamespace(pod_root=pod_root)),
+        "head": patch.object(
+            fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock, return_value="aaa1111"
+        ),
+        "cfg": patch.object(
+            runtime_mod, "_load_cfg", return_value=SimpleNamespace(pod_root=pod_root)
+        ),
         "avail": patch.object(runtime_mod, "_POD_AVAILABLE", True),
         "backend": patch.object(runtime_mod.rt, "require_backend", return_value=None),
-        "run": patch.object(runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(0, "", "")),
-        "upstream": patch.object(repository_mod, "_upstream_remote", new_callable=AsyncMock,
-                                 return_value="origin"),
+        "run": patch.object(
+            runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(0, "", "")
+        ),
+        "upstream": patch.object(
+            repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"
+        ),
     }
     base.update(extra)
     return list(base.values())
@@ -660,8 +778,11 @@ async def test_remove_refuses_when_the_reclaim_itself_raises(tmp_path):
             tmp_path,
             active=patch.object(runtime_mod.rt, "active_names", return_value=set()),
             orphans=patch.object(runtime_mod.rt, "orphan_homes", return_value=["feat-x"]),
-            reclaim=patch.object(worktree_ops_mod, "_reclaim_pod_locked",
-                                 MagicMock(side_effect=TimeoutError("stop timed out"))),
+            reclaim=patch.object(
+                worktree_ops_mod,
+                "_reclaim_pod_locked",
+                MagicMock(side_effect=TimeoutError("stop timed out")),
+            ),
         ):
             stack.enter_context(cm)
         result = await mod._worktree_remove("feat-x", force=False)
@@ -683,7 +804,9 @@ async def test_remove_survives_a_failing_home_enumeration(tmp_path, caplog):
         for cm in _remove_stubs(
             tmp_path,
             active=patch.object(runtime_mod.rt, "active_names", return_value=set()),
-            orphans=patch.object(runtime_mod.rt, "orphan_homes", side_effect=OSError("pod root gone")),
+            orphans=patch.object(
+                runtime_mod.rt, "orphan_homes", side_effect=OSError("pod root gone")
+            ),
             reclaim=patch.object(worktree_ops_mod, "_reclaim_pod_locked", reclaim),
         ):
             stack.enter_context(cm)
@@ -734,8 +857,9 @@ async def test_remove_names_the_home_it_cannot_reclaim(tmp_path, caplog):
     with ExitStack() as stack:
         for cm in _remove_stubs(
             tmp_path,
-            backend=patch.object(runtime_mod.rt, "require_backend",
-                                 side_effect=PodBackendAbsent("no session bus")),
+            backend=patch.object(
+                runtime_mod.rt, "require_backend", side_effect=PodBackendAbsent("no session bus")
+            ),
             unit=patch.object(runtime_mod.rt, "unit_state", return_value=("inactive", 0)),
             home=patch.object(runtime_mod.rt, "pod_home", return_value=Path("/pods/feat-x")),
         ):
@@ -791,9 +915,11 @@ def test_reclaim_reads_the_pin_and_tears_down_inside_the_lock(tmp_path):
         log.append("stop")
         return cp
 
-    with patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex(log)), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", _pin), \
-         patch.object(runtime_mod.rt, "stop_pod", _stop):
+    with (
+        patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex(log)),
+        patch.object(worktree_ops_mod, "_read_pin_strict", _pin),
+        patch.object(runtime_mod.rt, "stop_pod", _stop),
+    ):
         outcome, detail = mod._reclaim_pod_locked(_reclaim_cfg(tmp_path), "feat-x", "/fake/wt")
 
     assert (outcome, detail) == ("reclaimed", "")
@@ -805,9 +931,11 @@ def test_reclaim_refuses_a_foreign_pin_without_tearing_down(tmp_path):
     log = []
     stop = MagicMock()
 
-    with patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex(log)), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (True, "/other/repo/wt")), \
-         patch.object(runtime_mod.rt, "stop_pod", stop):
+    with (
+        patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex(log)),
+        patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (True, "/other/repo/wt")),
+        patch.object(runtime_mod.rt, "stop_pod", stop),
+    ):
         outcome, detail = mod._reclaim_pod_locked(_reclaim_cfg(tmp_path), "feat-x", "/fake/wt")
 
     assert outcome == "foreign"
@@ -828,10 +956,12 @@ def test_reclaim_refuses_an_unpinned_pod(tmp_path):
     stop = MagicMock()
     active = MagicMock(return_value=set())
 
-    with patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex([])), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (False, None)), \
-         patch.object(runtime_mod.rt, "active_names", active), \
-         patch.object(runtime_mod.rt, "stop_pod", stop):
+    with (
+        patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex([])),
+        patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (False, None)),
+        patch.object(runtime_mod.rt, "active_names", active),
+        patch.object(runtime_mod.rt, "stop_pod", stop),
+    ):
         outcome, detail = mod._reclaim_pod_locked(_reclaim_cfg(tmp_path), "feat-x", "/fake/wt")
 
     assert outcome == "foreign"
@@ -847,9 +977,11 @@ def test_reclaim_leaves_the_env_file_when_the_name_was_handed_over(tmp_path):
     cfg = SimpleNamespace(env_file=lambda name: env)
     cp = SimpleNamespace(returncode=0, stdout=runtime_mod.rt.RECLAIMED_MARKER, stderr="")
 
-    with patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex([])), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (True, "/fake/wt")), \
-         patch.object(runtime_mod.rt, "stop_pod", lambda c, n: cp):
+    with (
+        patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex([])),
+        patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (True, "/fake/wt")),
+        patch.object(runtime_mod.rt, "stop_pod", lambda c, n: cp),
+    ):
         outcome, detail = mod._reclaim_pod_locked(cfg, "feat-x", "/fake/wt")
 
     assert outcome == "handed_over"
@@ -863,9 +995,11 @@ def test_reclaim_clears_the_env_file_after_a_clean_reclaim(tmp_path):
     cfg = SimpleNamespace(env_file=lambda name: env)
     cp = SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    with patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex([])), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (True, "/fake/wt")), \
-         patch.object(runtime_mod.rt, "stop_pod", lambda c, n: cp):
+    with (
+        patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex([])),
+        patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (True, "/fake/wt")),
+        patch.object(runtime_mod.rt, "stop_pod", lambda c, n: cp),
+    ):
         outcome, _ = mod._reclaim_pod_locked(cfg, "feat-x", "/fake/wt")
 
     assert outcome == "reclaimed"
@@ -880,9 +1014,11 @@ def test_reclaim_reports_a_teardown_that_left_the_home_behind(tmp_path):
     """
     cp = SimpleNamespace(returncode=1, stdout="", stderr="isolated HOME is still at /pods/feat-x")
 
-    with patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex([])), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (True, "/fake/wt")), \
-         patch.object(runtime_mod.rt, "stop_pod", lambda c, n: cp):
+    with (
+        patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex([])),
+        patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (True, "/fake/wt")),
+        patch.object(runtime_mod.rt, "stop_pod", lambda c, n: cp),
+    ):
         outcome, detail = mod._reclaim_pod_locked(_reclaim_cfg(tmp_path), "feat-x", "/fake/wt")
 
     assert outcome == "failed"
@@ -894,9 +1030,11 @@ def test_reclaim_redacts_the_teardown_stderr(tmp_path):
     secret = "AKIAIOSFODNN7EXAMPLE"
     cp = SimpleNamespace(returncode=1, stdout="", stderr=f"stop failed: {secret}")
 
-    with patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex([])), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (True, "/fake/wt")), \
-         patch.object(runtime_mod.rt, "stop_pod", lambda c, n: cp):
+    with (
+        patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex([])),
+        patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (True, "/fake/wt")),
+        patch.object(runtime_mod.rt, "stop_pod", lambda c, n: cp),
+    ):
         outcome, detail = mod._reclaim_pod_locked(_reclaim_cfg(tmp_path), "feat-x", "/fake/wt")
 
     assert outcome == "failed"
@@ -908,9 +1046,11 @@ def test_reclaim_falls_back_to_the_return_code_when_stderr_is_empty(tmp_path):
     """An empty stderr still names a cause rather than an empty error string."""
     cp = SimpleNamespace(returncode=3, stdout="", stderr="   ")
 
-    with patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex([])), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (True, "/fake/wt")), \
-         patch.object(runtime_mod.rt, "stop_pod", lambda c, n: cp):
+    with (
+        patch.object(runtime_mod.rt, "pod_name_mutex", _RecordingMutex([])),
+        patch.object(worktree_ops_mod, "_read_pin_strict", lambda c, n: (True, "/fake/wt")),
+        patch.object(runtime_mod.rt, "stop_pod", lambda c, n: cp),
+    ):
         outcome, detail = mod._reclaim_pod_locked(_reclaim_cfg(tmp_path), "feat-x", "/fake/wt")
 
     assert (outcome, detail) == ("failed", "stop rc=3")
@@ -922,7 +1062,9 @@ async def test_upstream_remote_fallback_to_origin():
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
     repository_mod._UPSTREAM_REMOTE = None
-    with patch.object(runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(1, "", "not configured")):
+    with patch.object(
+        runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(1, "", "not configured")
+    ):
         result = await mod._upstream_remote()
     assert result == "origin"
     repository_mod._UPSTREAM_REMOTE = None
@@ -933,7 +1075,9 @@ async def test_upstream_remote_reads_config():
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
     repository_mod._UPSTREAM_REMOTE = None
-    with patch.object(runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(0, "kirocrew\n", "")):
+    with patch.object(
+        runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(0, "kirocrew\n", "")
+    ):
         result = await mod._upstream_remote()
     assert result == "kirocrew"
     repository_mod._UPSTREAM_REMOTE = None
@@ -969,8 +1113,10 @@ async def test_resolve_base_branch_clears_cached_upstream_remote():
         return ""
 
     try:
-        with patch.object(repository_mod, "_repo", return_value="/fake/repo"), \
-             patch.object(repository_mod, "_git", new=AsyncMock(side_effect=fake_git)):
+        with (
+            patch.object(repository_mod, "_repo", return_value="/fake/repo"),
+            patch.object(repository_mod, "_git", new=AsyncMock(side_effect=fake_git)),
+        ):
             await mod._resolve_base_branch()
 
         # The stale 'fork' is gone; the cache now holds the remote this resolution used.
@@ -998,12 +1144,18 @@ async def test_sync_script_emits_step_markers():
 
     repository_mod._UPSTREAM_REMOTE = "origin"
     worktree_ops_mod._SYNC_RID = None
-    with patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="main"), \
-         patch.object(worktree_ops_mod, "_venv_python", return_value=Path("/fake/.venv/bin/python")), \
-         patch.object(runtime_mod, "_trusted_bin", side_effect=lambda n: f"/usr/bin/{n}"), \
-         patch("kiro_crew.apps.builtins.dev_fleet.worktree_ops.sandboxed_spawn_argv",
-               side_effect=lambda cmd, mode, env=None: (cmd, env or {}, None)), \
-         patch.object(runtime_mod, "_start_run", new_callable=AsyncMock, return_value="run-123") as mock_start:
+    with (
+        patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="main"),
+        patch.object(worktree_ops_mod, "_venv_python", return_value=Path("/fake/.venv/bin/python")),
+        patch.object(runtime_mod, "_trusted_bin", side_effect=lambda n: f"/usr/bin/{n}"),
+        patch(
+            "kiro_crew.apps.builtins.dev_fleet.worktree_ops.sandboxed_spawn_argv",
+            side_effect=lambda cmd, mode, env=None: (cmd, env or {}, None),
+        ),
+        patch.object(
+            runtime_mod, "_start_run", new_callable=AsyncMock, return_value="run-123"
+        ) as mock_start,
+    ):
         async with mod._SYNC_LOCK:
             result = await mod._sync_start_locked()
     # Clean up the snapshot + steps file the stubbed _start_run would have —
@@ -1133,8 +1285,11 @@ async def test_sync_runs_every_step_when_nothing_is_locked():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("locked", [[], [r"C:\repo\.venv\Scripts\kirocrew.exe"]],
-                         ids=["reinstall-branch", "substitute-branch"])
+@pytest.mark.parametrize(
+    "locked",
+    [[], [r"C:\repo\.venv\Scripts\kirocrew.exe"]],
+    ids=["reinstall-branch", "substitute-branch"],
+)
 async def test_sync_refuses_a_venv_that_serves_another_checkout(locked):
     """The refusal covers BOTH install paths, and refuses before either runs.
 
@@ -1205,9 +1360,7 @@ def test_utf8_reconfigure_survives_a_legacy_codepage_pipe():
         f"print({text!r}, flush=True)\n"
     )
     env = {**os.environ, "PYTHONIOENCODING": "cp1252"}
-    proc = subprocess.run(
-        [_sys.executable, "-c", body], capture_output=True, env=env, timeout=60
-    )
+    proc = subprocess.run([_sys.executable, "-c", body], capture_output=True, env=env, timeout=60)
 
     assert proc.returncode == 0, proc.stderr.decode(errors="replace")
     # Matches how the run reader decodes the stream.
@@ -1253,7 +1406,12 @@ async def test_repo_owner_name_ssh():
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
     fleet_state_mod._OWNER_REPO = None
-    with patch.object(runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(0, "git@github.com:kirodotdev/KiroCrew.git\n", "")):
+    with patch.object(
+        runtime_mod,
+        "_run_cmd",
+        new_callable=AsyncMock,
+        return_value=(0, "git@github.com:kirodotdev/KiroCrew.git\n", ""),
+    ):
         result = await mod._repo_owner_name()
     assert result == "kirodotdev/KiroCrew"
 
@@ -1263,7 +1421,12 @@ async def test_repo_owner_name_https():
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
     fleet_state_mod._OWNER_REPO = None
-    with patch.object(runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(0, "https://github.com/kirodotdev/KiroCrew.git\n", "")):
+    with patch.object(
+        runtime_mod,
+        "_run_cmd",
+        new_callable=AsyncMock,
+        return_value=(0, "https://github.com/kirodotdev/KiroCrew.git\n", ""),
+    ):
         result = await mod._repo_owner_name()
     assert result == "kirodotdev/KiroCrew"
 
@@ -1277,7 +1440,9 @@ async def test_find_worktree_ambiguous():
         {"path": "/a/feature-x", "is_main": False},
         {"path": "/b/feature-x", "is_main": False},
     ]
-    with patch.object(repository_mod, "_discover_worktrees", new_callable=AsyncMock, return_value=wts):
+    with patch.object(
+        repository_mod, "_discover_worktrees", new_callable=AsyncMock, return_value=wts
+    ):
         result, err = await mod._find_worktree("feature-x")
     assert result is None
     assert "ambiguous" in err
@@ -1287,7 +1452,9 @@ async def test_find_worktree_ambiguous():
 async def test_find_worktree_not_found():
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
-    with patch.object(repository_mod, "_discover_worktrees", new_callable=AsyncMock, return_value=[]):
+    with patch.object(
+        repository_mod, "_discover_worktrees", new_callable=AsyncMock, return_value=[]
+    ):
         result, err = await mod._find_worktree("nope")
     assert result is None
     assert "not found" in err
@@ -1307,7 +1474,11 @@ async def test_worktree_remove_force_must_be_bool():
     request.json = fake_json
     request.content_length = 100
 
-    with patch("kiro_crew.apps.builtins.dev_fleet.repository._valid_worktree_names", new_callable=AsyncMock, return_value={"test-wt"}):
+    with patch(
+        "kiro_crew.apps.builtins.dev_fleet.repository._valid_worktree_names",
+        new_callable=AsyncMock,
+        return_value={"test-wt"},
+    ):
         resp = await api_dev_fleet_worktree_remove(request)
     assert resp.status == 400
     body = json.loads(resp.body)
@@ -1324,10 +1495,16 @@ async def test_sync_returns_409_when_already_running():
     # Inject a fake running sync with a live task + process
     worktree_ops_mod._SYNC_RID = "fake123"
     async with mod._RUNS_LOCK:
-        mod._RUNS["fake123"] = {"status": "running", "exit_code": None, "label": "sync", "output": []}
+        mod._RUNS["fake123"] = {
+            "status": "running",
+            "exit_code": None,
+            "label": "sync",
+            "output": [],
+        }
 
     # Simulate a genuinely-running process (returncode=None)
     from unittest.mock import MagicMock
+
     mock_proc = MagicMock()
     mock_proc.returncode = None
     never_done = asyncio.get_event_loop().create_future()
@@ -1371,16 +1548,25 @@ async def test_disk_name_derivation_from_path():
         {"path": "/home/user/kirocrew-wt-feature-x", "is_main": False},
     ]
 
-    with patch.object(repository_mod, "_discover_worktrees", new_callable=AsyncMock, return_value=fake_worktrees), \
-         patch.object(runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(0, "100\t/fake\n", "")):
+    with (
+        patch.object(
+            repository_mod,
+            "_discover_worktrees",
+            new_callable=AsyncMock,
+            return_value=fake_worktrees,
+        ),
+        patch.object(
+            runtime_mod, "_run_cmd", new_callable=AsyncMock, return_value=(0, "100\t/fake\n", "")
+        ),
+    ):
         result = await mod._disk()
         assert result["status"] == "computing"
 
         # Wait for background task
-        for _ in range(50):
-            await asyncio.sleep(0.05)
-            if mod._DISK["status"] == "done":
-                break
+        await async_wait_until(
+            lambda: mod._DISK["status"] == "done",
+            describe=lambda: f'disk status: {mod._DISK.get("status")}',
+        )
 
     assert mod._DISK["status"] == "done"
     assert "kirocrew" in mod._DISK["per"] or "kirocrew-wt-feature-x" in mod._DISK["per"]
@@ -1419,7 +1605,7 @@ def test_build_pending_true_when_dist_newer():
         # Patch the dist resolution
         original_start = mod._START_EPOCH
         fleet_state_mod._START_EPOCH = time.time() - 100  # pretend started 100s ago
-        with patch.object(Path, '__new__', wraps=Path.__new__):
+        with patch.object(Path, "__new__", wraps=Path.__new__):
             # Directly test the logic: dist mtime > start epoch
             assert dist_path.stat().st_mtime > mod._START_EPOCH
         fleet_state_mod._START_EPOCH = original_start
@@ -1472,17 +1658,35 @@ async def test_fleet_build_does_not_bake_run_pointers():
 
     worktree_ops_mod._SYNC_RID = "test-rid-abc"
     try:
-        with patch.object(repository_mod, "_discover_worktrees", new_callable=AsyncMock, return_value=[
-            {"path": "/fake/main", "head": "abc1234", "branch": "main", "is_main": True}
-        ]), \
-             patch.object(repository_mod, "_git_info", new_callable=AsyncMock, return_value={
-                 "branch": "main", "head": "abc1234", "dirty": False,
-                 "ahead": 0, "behind": 0, "last_updated_at": None
-             }), \
-             patch.object(fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock, return_value=None), \
-             patch.object(repository_mod, "_git_ahead", new_callable=AsyncMock, return_value=0), \
-             patch.object(runtime_mod, "_load_cfg", return_value=None), \
-             patch.object(fleet_state_mod, "_build_pending", return_value=False):
+        with (
+            patch.object(
+                repository_mod,
+                "_discover_worktrees",
+                new_callable=AsyncMock,
+                return_value=[
+                    {"path": "/fake/main", "head": "abc1234", "branch": "main", "is_main": True}
+                ],
+            ),
+            patch.object(
+                repository_mod,
+                "_git_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "branch": "main",
+                    "head": "abc1234",
+                    "dirty": False,
+                    "ahead": 0,
+                    "behind": 0,
+                    "last_updated_at": None,
+                },
+            ),
+            patch.object(
+                fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock, return_value=None
+            ),
+            patch.object(repository_mod, "_git_ahead", new_callable=AsyncMock, return_value=0),
+            patch.object(runtime_mod, "_load_cfg", return_value=None),
+            patch.object(fleet_state_mod, "_build_pending", return_value=False),
+        ):
             data = await mod._build_fleet()
         assert "sync_run_id" not in data
         assert all("provision_run_id" not in w for w in data["worktrees"])
@@ -1495,15 +1699,35 @@ async def test_fleet_build_does_not_bake_run_pointers():
 async def test_fleet_includes_build_pending():
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
-    with patch.object(repository_mod, "_discover_worktrees", new_callable=AsyncMock, return_value=[
-        {"path": "/fake/main", "head": "abc1234", "branch": "main", "is_main": True}
-    ]), patch.object(repository_mod, "_git_info", new_callable=AsyncMock, return_value={
-        "branch": "main", "head": "abc1234", "dirty": False,
-        "ahead": 0, "behind": 0, "last_updated_at": None,
-    }), patch.object(fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock, return_value=None), \
-            patch.object(repository_mod, "_git_ahead", new_callable=AsyncMock, return_value=0), \
-            patch.object(runtime_mod, "_load_cfg", return_value=None), \
-            patch.object(fleet_state_mod, "_build_pending", return_value=True):
+    with (
+        patch.object(
+            repository_mod,
+            "_discover_worktrees",
+            new_callable=AsyncMock,
+            return_value=[
+                {"path": "/fake/main", "head": "abc1234", "branch": "main", "is_main": True}
+            ],
+        ),
+        patch.object(
+            repository_mod,
+            "_git_info",
+            new_callable=AsyncMock,
+            return_value={
+                "branch": "main",
+                "head": "abc1234",
+                "dirty": False,
+                "ahead": 0,
+                "behind": 0,
+                "last_updated_at": None,
+            },
+        ),
+        patch.object(
+            fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock, return_value=None
+        ),
+        patch.object(repository_mod, "_git_ahead", new_callable=AsyncMock, return_value=0),
+        patch.object(runtime_mod, "_load_cfg", return_value=None),
+        patch.object(fleet_state_mod, "_build_pending", return_value=True),
+    ):
         data = await mod._build_fleet()
     assert data["build_pending"] is True
 
@@ -1516,26 +1740,49 @@ async def test_fleet_includes_build_pending():
 # `test_fleet_handler_overlays_runs_started_after_snapshot` covers.
 @pytest.mark.asyncio
 async def test_provision_reattach_ids_expose_running_and_failed_runs():
-    with patch.dict(mod._PROVISION_INFLIGHT, {
-        "wt-running": "rid-running", "wt-failed": "rid-failed",
-    }, clear=True), patch.dict(mod._RUNS, {
-        "rid-running": {"status": "running", "exit_code": None, "output": []},
-        "rid-failed": {"status": "done", "exit_code": 1, "output": []},
-    }, clear=True):
+    with (
+        patch.dict(
+            mod._PROVISION_INFLIGHT,
+            {
+                "wt-running": "rid-running",
+                "wt-failed": "rid-failed",
+            },
+            clear=True,
+        ),
+        patch.dict(
+            mod._RUNS,
+            {
+                "rid-running": {"status": "running", "exit_code": None, "output": []},
+                "rid-failed": {"status": "done", "exit_code": 1, "output": []},
+            },
+            clear=True,
+        ),
+    ):
         rids = await mod._provision_reattach_ids()
     assert rids == {"wt-running": "rid-running", "wt-failed": "rid-failed"}
 
 
 @pytest.mark.asyncio
 async def test_provision_reattach_ids_omit_successful_and_evicted_runs():
-    with patch.dict(mod._PROVISION_INFLIGHT, {
-        # Success: nothing to reattach — the fleet row shows the built state.
-        "wt-ok": "rid-ok",
-        # Evicted from the bounded run registry: output is unfetchable.
-        "wt-gone": "rid-gone",
-    }, clear=True), patch.dict(mod._RUNS, {
-        "rid-ok": {"status": "done", "exit_code": 0, "output": []},
-    }, clear=True):
+    with (
+        patch.dict(
+            mod._PROVISION_INFLIGHT,
+            {
+                # Success: nothing to reattach — the fleet row shows the built state.
+                "wt-ok": "rid-ok",
+                # Evicted from the bounded run registry: output is unfetchable.
+                "wt-gone": "rid-gone",
+            },
+            clear=True,
+        ),
+        patch.dict(
+            mod._RUNS,
+            {
+                "rid-ok": {"status": "done", "exit_code": 0, "output": []},
+            },
+            clear=True,
+        ),
+    ):
         rids = await mod._provision_reattach_ids()
     assert rids == {}
 
@@ -1545,6 +1792,7 @@ def _fake_sel_capture(events):
     class _FakeSel:
         def log_tool_invocation(self, **kw):
             events.append(kw)
+
     return lambda: _FakeSel()
 
 
@@ -1572,7 +1820,8 @@ async def test_mutation_denied_emits_sel_event(monkeypatch):
 
     with patch(
         "kiro_crew.apps.builtins.dev_fleet.repository._valid_worktree_names",
-        new_callable=AsyncMock, return_value={"other"},
+        new_callable=AsyncMock,
+        return_value={"other"},
     ):
         resp = await api_dev_fleet_worktree_remove(request)
     assert resp.status == 400
@@ -1605,12 +1854,17 @@ async def test_mutation_success_emits_sel_event(monkeypatch):
     request.content_length = len(payload)
     request.can_read_body = True
 
-    with patch(
-        "kiro_crew.apps.builtins.dev_fleet.repository._find_worktree",
-        new_callable=AsyncMock, return_value=({"name": "feature-x"}, None),
-    ), patch(
-        "kiro_crew.apps.builtins.dev_fleet.worktree_ops._pod_down",
-        new_callable=AsyncMock, return_value={"ok": True},
+    with (
+        patch(
+            "kiro_crew.apps.builtins.dev_fleet.repository._find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"name": "feature-x"}, None),
+        ),
+        patch(
+            "kiro_crew.apps.builtins.dev_fleet.worktree_ops._pod_down",
+            new_callable=AsyncMock,
+            return_value={"ok": True},
+        ),
     ):
         resp = await api_dev_fleet_pod_down(request)
     assert resp.status == 200
@@ -1670,13 +1924,17 @@ async def test_mutation_ok_false_audited_as_denied(monkeypatch):
     request.content_length = len(payload)
     request.can_read_body = True
 
-    with patch(
-        "kiro_crew.apps.builtins.dev_fleet.repository._valid_worktree_names",
-        new_callable=AsyncMock, return_value={"feature-x"},
-    ), patch(
-        "kiro_crew.apps.builtins.dev_fleet.worktree_ops._worktree_remove",
-        new_callable=AsyncMock,
-        return_value={"ok": False, "error": "worktree is dirty"},
+    with (
+        patch(
+            "kiro_crew.apps.builtins.dev_fleet.repository._valid_worktree_names",
+            new_callable=AsyncMock,
+            return_value={"feature-x"},
+        ),
+        patch(
+            "kiro_crew.apps.builtins.dev_fleet.worktree_ops._worktree_remove",
+            new_callable=AsyncMock,
+            return_value={"ok": False, "error": "worktree is dirty"},
+        ),
     ):
         resp = await api_dev_fleet_worktree_remove(request)
     assert resp.status == 200  # handler keeps its HTTP contract
@@ -1701,7 +1959,15 @@ async def test_run_record_includes_started():
         async with mod._RUNS_LOCK:
             if mod._RUNS[rid]["status"] != "running":
                 break
-        await asyncio.sleep(0.05)
+
+    async def _run_finished_1704() -> bool:
+        async with mod._RUNS_LOCK:
+            return mod._RUNS[rid]["status"] != "running"
+
+    await async_wait_until(
+        _run_finished_1704,
+        describe=lambda: f'run {rid} status: {mod._RUNS.get(rid, {}).get("status")}',
+    )
 
 
 # --- escalation cleanup symlink guard (Codex R19) ---
@@ -1744,11 +2010,16 @@ async def test_pod_guard_rejects_foreign_pinned_checkout(monkeypatch, tmp_path):
     foreign = tmp_path / "repo-b" / "kirocrew-wt-feature"
     foreign.mkdir(parents=True)
 
-    with patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                      return_value=({"path": str(ours)}, None)), \
-         patch.object(runtime_mod, "_load_cfg", return_value=object()), \
-         patch.object(worktree_ops_mod, "_read_pin_strict",
-                      return_value=(True, str(foreign))):
+    with (
+        patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": str(ours)}, None),
+        ),
+        patch.object(runtime_mod, "_load_cfg", return_value=object()),
+        patch.object(worktree_ops_mod, "_read_pin_strict", return_value=(True, str(foreign))),
+    ):
         err = await mod._pod_checkout_guard("kirocrew-wt-feature")
     assert err is not None
     assert "different checkout" in err
@@ -1762,19 +2033,30 @@ async def test_pod_guard_allows_matching_or_unpinned(monkeypatch, tmp_path):
     ours = tmp_path / "kirocrew-wt-feature"
     ours.mkdir()
 
-    with patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                      return_value=({"path": str(ours)}, None)), \
-         patch.object(runtime_mod, "_load_cfg", return_value=object()), \
-         patch.object(worktree_ops_mod, "_read_pin_strict",
-                      return_value=(True, str(ours))):
+    with (
+        patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": str(ours)}, None),
+        ),
+        patch.object(runtime_mod, "_load_cfg", return_value=object()),
+        patch.object(worktree_ops_mod, "_read_pin_strict", return_value=(True, str(ours))),
+    ):
         assert await mod._pod_checkout_guard("kirocrew-wt-feature") is None
 
     # No pin file + no active unit -> pod never booted -> allow
-    with patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                      return_value=({"path": str(ours)}, None)), \
-         patch.object(runtime_mod, "_load_cfg", return_value=object()), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", return_value=(False, None)), \
-         patch.object(runtime_mod.rt, "active_names", return_value=set()):
+    with (
+        patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": str(ours)}, None),
+        ),
+        patch.object(runtime_mod, "_load_cfg", return_value=object()),
+        patch.object(worktree_ops_mod, "_read_pin_strict", return_value=(False, None)),
+        patch.object(runtime_mod.rt, "active_names", return_value=set()),
+    ):
         assert await mod._pod_checkout_guard("kirocrew-wt-feature") is None
 
 
@@ -1786,10 +2068,16 @@ async def test_pod_guard_fails_closed_on_pin_read_error(monkeypatch, tmp_path):
     ours = tmp_path / "kirocrew-wt-feature"
     ours.mkdir()
 
-    with patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                      return_value=({"path": str(ours)}, None)), \
-         patch.object(runtime_mod, "_load_cfg", return_value=object()), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", side_effect=OSError("boom")):
+    with (
+        patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": str(ours)}, None),
+        ),
+        patch.object(runtime_mod, "_load_cfg", return_value=object()),
+        patch.object(worktree_ops_mod, "_read_pin_strict", side_effect=OSError("boom")),
+    ):
         err = await mod._pod_checkout_guard("kirocrew-wt-feature")
     assert err is not None
     assert "cannot verify pod checkout pin" in err
@@ -1804,10 +2092,16 @@ async def test_pod_guard_denies_pin_file_without_checkout(monkeypatch, tmp_path)
     ours = tmp_path / "kirocrew-wt-feature"
     ours.mkdir()
 
-    with patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                      return_value=({"path": str(ours)}, None)), \
-         patch.object(runtime_mod, "_load_cfg", return_value=object()), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", return_value=(True, None)):
+    with (
+        patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": str(ours)}, None),
+        ),
+        patch.object(runtime_mod, "_load_cfg", return_value=object()),
+        patch.object(worktree_ops_mod, "_read_pin_strict", return_value=(True, None)),
+    ):
         err = await mod._pod_checkout_guard("kirocrew-wt-feature")
     assert err is not None
     assert "ambiguous pod identity" in err
@@ -2003,9 +2297,7 @@ def test_safe_env_keys_platform_composition():
         assert not (windows & active)
 
 
-@pytest.mark.skipif(
-    not platform_compat.IS_WINDOWS, reason="Windows-only env semantics"
-)
+@pytest.mark.skipif(not platform_compat.IS_WINDOWS, reason="Windows-only env semantics")
 def test_build_env_carries_systemroot_on_windows(monkeypatch):
     """SYSTEMROOT must reach every build/fetch child.
 
@@ -2073,12 +2365,18 @@ async def test_completed_runs_are_evicted_beyond_cap():
         mod._RUNS.clear()
         for i in range(mod._RUNS_MAX_COMPLETED + 5):
             mod._RUNS[f"old{i}"] = {
-                "status": "done", "exit_code": 0, "label": "t",
-                "output": [], "started": float(i),
+                "status": "done",
+                "exit_code": 0,
+                "label": "t",
+                "output": [],
+                "started": float(i),
             }
         mod._RUNS["active"] = {
-            "status": "running", "exit_code": None, "label": "t",
-            "output": [], "started": 999.0,
+            "status": "running",
+            "exit_code": None,
+            "label": "t",
+            "output": [],
+            "started": 999.0,
         }
     try:
         rid = await mod._start_run("evict-test", ["true"])
@@ -2091,7 +2389,15 @@ async def test_completed_runs_are_evicted_beyond_cap():
             async with mod._RUNS_LOCK:
                 if mod._RUNS.get(rid, {}).get("status") != "running":
                     break
-            await asyncio.sleep(0.05)
+
+        async def _run_finished_2094() -> bool:
+            async with mod._RUNS_LOCK:
+                return mod._RUNS.get(rid, {}).get("status") != "running"
+
+        await async_wait_until(
+            _run_finished_2094,
+            describe=lambda: f'run {rid} status: {mod._RUNS.get(rid, {}).get("status")}',
+        )
     finally:
         async with mod._RUNS_LOCK:
             mod._RUNS.clear()
@@ -2107,21 +2413,33 @@ async def test_pod_guard_denies_active_unpinned_pod(tmp_path):
     ours = tmp_path / "kirocrew-wt-feature"
     ours.mkdir()
 
-    with patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                      return_value=({"path": str(ours)}, None)), \
-         patch.object(runtime_mod, "_load_cfg", return_value=object()), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", return_value=(False, None)), \
-         patch.object(runtime_mod.rt, "active_names", return_value={"kirocrew-wt-feature"}):
+    with (
+        patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": str(ours)}, None),
+        ),
+        patch.object(runtime_mod, "_load_cfg", return_value=object()),
+        patch.object(worktree_ops_mod, "_read_pin_strict", return_value=(False, None)),
+        patch.object(runtime_mod.rt, "active_names", return_value={"kirocrew-wt-feature"}),
+    ):
         err = await mod._pod_checkout_guard("kirocrew-wt-feature")
     assert err is not None
     assert "unattributable" in err
 
     # No pin + NOT active -> allow (pod never booted)
-    with patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                      return_value=({"path": str(ours)}, None)), \
-         patch.object(runtime_mod, "_load_cfg", return_value=object()), \
-         patch.object(worktree_ops_mod, "_read_pin_strict", return_value=(False, None)), \
-         patch.object(runtime_mod.rt, "active_names", return_value=set()):
+    with (
+        patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": str(ours)}, None),
+        ),
+        patch.object(runtime_mod, "_load_cfg", return_value=object()),
+        patch.object(worktree_ops_mod, "_read_pin_strict", return_value=(False, None)),
+        patch.object(runtime_mod.rt, "active_names", return_value=set()),
+    ):
         assert await mod._pod_checkout_guard("kirocrew-wt-feature") is None
 
 
@@ -2163,8 +2481,12 @@ def test_escalation_cleanup_removes_empty_builtin_via_pinned_fd(tmp_path, monkey
 
     mgr.register_builtin_apps()
 
-    if (os.open in os.supports_dir_fd and os.unlink in os.supports_dir_fd
-            and os.rmdir in os.supports_dir_fd and hasattr(os, "O_DIRECTORY")):
+    if (
+        os.open in os.supports_dir_fd
+        and os.unlink in os.supports_dir_fd
+        and os.rmdir in os.supports_dir_fd
+        and hasattr(os, "O_DIRECTORY")
+    ):
         assert not esc.exists()  # dir_fd deletion supported
     else:  # no race-free primitive -> fail closed -> kept
         assert esc.exists()
@@ -2263,7 +2585,8 @@ async def test_run_cmd_cancel_with_reaped_child_propagates_cancellation(monkeypa
         return FakeProc()
 
     monkeypatch.setattr(
-        runtime_mod, "sandboxed_spawn_argv",
+        runtime_mod,
+        "sandboxed_spawn_argv",
         lambda cmd, mode, *, env=None, **kw: (cmd, env, None),
     )
     monkeypatch.setattr(runtime_mod, "create_subprocess_limited", fake_spawn)
@@ -2276,7 +2599,7 @@ async def test_run_cmd_cancel_with_reaped_child_propagates_cancellation(monkeypa
 
     task = asyncio.ensure_future(mod._run_cmd(["/bin/true"]))
     # Bounded so a future early-return in _run_cmd fails fast, not a hang.
-    await asyncio.wait_for(entered.wait(), timeout=5)
+    await await_until(entered, what="run_cmd entered cancellation point")
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
@@ -2337,7 +2660,15 @@ async def test_start_run_readline_overrun_kills_process_tree(monkeypatch):
         async with mod._RUNS_LOCK:
             if mod._RUNS[rid]["status"] != "running":
                 break
-        await asyncio.sleep(0.02)
+
+    async def _run_finished_2340() -> bool:
+        async with mod._RUNS_LOCK:
+            return mod._RUNS[rid]["status"] != "running"
+
+    await async_wait_until(
+        _run_finished_2340,
+        describe=lambda: f'run {rid} status: {mod._RUNS.get(rid, {}).get("status")}',
+    )
     async with mod._RUNS_LOCK:
         rec = dict(mod._RUNS[rid])
     assert rec["status"] == "done" and rec["exit_code"] == -1
@@ -2365,14 +2696,16 @@ async def test_sync_fetch_standard_merge_strict(monkeypatch):
         captured.append((list(argv), mode))
         return list(argv), dict(env or {}), None
 
-    with patch.object(repository_mod, "_git", new_callable=AsyncMock,
-                      return_value=mod.BASE_BRANCH), \
-         patch.object(worktree_ops_mod, "_venv_python", return_value=Path("/fake/.venv/bin/python")), \
-         patch.object(runtime_mod, "_trusted_bin", side_effect=lambda n: f"/usr/bin/{n}"), \
-         patch.object(runtime_mod, "_build_env", return_value={}), \
-         patch.object(worktree_ops_mod, "sandboxed_spawn_argv", fake_sandbox), \
-         patch.object(runtime_mod, "_start_run", new_callable=AsyncMock,
-                      return_value="rid-sync-test"):
+    with (
+        patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value=mod.BASE_BRANCH),
+        patch.object(worktree_ops_mod, "_venv_python", return_value=Path("/fake/.venv/bin/python")),
+        patch.object(runtime_mod, "_trusted_bin", side_effect=lambda n: f"/usr/bin/{n}"),
+        patch.object(runtime_mod, "_build_env", return_value={}),
+        patch.object(worktree_ops_mod, "sandboxed_spawn_argv", fake_sandbox),
+        patch.object(
+            runtime_mod, "_start_run", new_callable=AsyncMock, return_value="rid-sync-test"
+        ),
+    ):
         worktree_ops_mod._SYNC_RID = None
         res = await mod._sync()
         worktree_ops_mod._SYNC_RID = None
@@ -2392,22 +2725,33 @@ async def test_removal_refuses_when_commit_races_verdict():
     """A commit pushed after merge causes OID divergence -> refuse non-forced removal."""
     import kiro_crew.apps.builtins.dev_fleet.server as mod
 
-    with patch.object(repository_mod, "_find_worktree", new_callable=AsyncMock,
-                      return_value=({"path": "/x/wt-feat", "branch": "feat-x",
-                                     "is_main": False}, None)), \
-         patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock,
-                      return_value=False), \
-         patch.object(fleet_state_mod, "_pr_status_cached", new_callable=AsyncMock,
-                      return_value={"state": "MERGED"}), \
-         patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock,
-                      return_value=0), \
-         patch.object(repository_mod, "_git", new_callable=AsyncMock,
-                      return_value="deadbeef_local"), \
-         patch.object(fleet_state_mod, "_fetch_pr_head_oid", new_callable=AsyncMock,
-                      return_value="deadbeef_pr_different"), \
-         patch.object(repository_mod, "_upstream_remote", new_callable=AsyncMock,
-                      return_value="origin"), \
-         patch.object(runtime_mod, "_POD_AVAILABLE", False):
+    with (
+        patch.object(
+            repository_mod,
+            "_find_worktree",
+            new_callable=AsyncMock,
+            return_value=({"path": "/x/wt-feat", "branch": "feat-x", "is_main": False}, None),
+        ),
+        patch.object(repository_mod, "_real_dirty", new_callable=AsyncMock, return_value=False),
+        patch.object(
+            fleet_state_mod,
+            "_pr_status_cached",
+            new_callable=AsyncMock,
+            return_value={"state": "MERGED"},
+        ),
+        patch.object(repository_mod, "_own_commits_count", new_callable=AsyncMock, return_value=0),
+        patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value="deadbeef_local"),
+        patch.object(
+            fleet_state_mod,
+            "_fetch_pr_head_oid",
+            new_callable=AsyncMock,
+            return_value="deadbeef_pr_different",
+        ),
+        patch.object(
+            repository_mod, "_upstream_remote", new_callable=AsyncMock, return_value="origin"
+        ),
+        patch.object(runtime_mod, "_POD_AVAILABLE", False),
+    ):
         res = await mod._worktree_remove("wt-feat", force=False)
     assert res["ok"] is False
     assert "OID diverged" in res["error"]
@@ -2548,7 +2892,9 @@ async def test_get_owner_repo_caches_success():
     fleet_state_mod._OWNER_REPO = None
     fleet_state_mod._OWNER_REPO_RETRY_AT = 0.0
     try:
-        with patch.object(fleet_state_mod, "_repo_owner_name", new=AsyncMock(return_value="org/repo")):
+        with patch.object(
+            fleet_state_mod, "_repo_owner_name", new=AsyncMock(return_value="org/repo")
+        ):
             result = await mod._get_owner_repo()
             assert result == "org/repo"
             # Second call uses cache
@@ -2594,9 +2940,11 @@ async def test_get_owner_repo_retries_on_failure():
 @pytest.mark.asyncio
 async def test_discover_worktrees_sandbox_error_raises():
     """sandbox RuntimeError propagates as RuntimeError, not silent empty."""
-    with patch.object(runtime_mod, "_run_cmd", new=AsyncMock(
-        return_value=(-1, "", "sandbox unavailable: RuntimeError(no backend)")
-    )):
+    with patch.object(
+        runtime_mod,
+        "_run_cmd",
+        new=AsyncMock(return_value=(-1, "", "sandbox unavailable: RuntimeError(no backend)")),
+    ):
         with pytest.raises(RuntimeError, match="sandbox unavailable"):
             await mod._discover_worktrees()
 
@@ -2652,10 +3000,14 @@ async def test_discover_worktrees_missing_repo_raises_actionable_error(tmp_path)
     worktrees when the app was simply looking at a path that does not exist.
     """
     missing = tmp_path / "does-not-exist"
-    with patch.object(repository_mod, "MAIN_REPO", str(missing)), \
-         patch.object(runtime_mod, "_run_cmd", new=AsyncMock(
-             return_value=(128, "", f"fatal: cannot change to '{missing}'")
-         )):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", str(missing)),
+        patch.object(
+            runtime_mod,
+            "_run_cmd",
+            new=AsyncMock(return_value=(128, "", f"fatal: cannot change to '{missing}'")),
+        ),
+    ):
         with pytest.raises(RuntimeError) as exc:
             await mod._discover_worktrees()
     msg = str(exc.value)
@@ -2668,10 +3020,14 @@ async def test_discover_worktrees_git_failure_raises_with_stderr(tmp_path):
     """When the repo exists but git fails, git's own message is surfaced."""
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    with patch.object(repository_mod, "MAIN_REPO", str(repo)), \
-         patch.object(runtime_mod, "_run_cmd", new=AsyncMock(
-             return_value=(128, "", "fatal: index file corrupt")
-         )):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", str(repo)),
+        patch.object(
+            runtime_mod,
+            "_run_cmd",
+            new=AsyncMock(return_value=(128, "", "fatal: index file corrupt")),
+        ),
+    ):
         with pytest.raises(RuntimeError, match="index file corrupt"):
             await mod._discover_worktrees()
 
@@ -2681,10 +3037,12 @@ async def test_discover_worktrees_git_failure_is_bounded(tmp_path):
     """An unbounded git stderr is clipped before reaching the UI."""
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    with patch.object(repository_mod, "MAIN_REPO", str(repo)), \
-         patch.object(runtime_mod, "_run_cmd", new=AsyncMock(
-             return_value=(128, "", "fatal: " + "x" * 5000)
-         )):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", str(repo)),
+        patch.object(
+            runtime_mod, "_run_cmd", new=AsyncMock(return_value=(128, "", "fatal: " + "x" * 5000))
+        ),
+    ):
         with pytest.raises(RuntimeError) as exc:
             await mod._discover_worktrees()
     # bounded: the git portion is clipped to _GIT_ERR_MAX plus the fixed prefix
@@ -2703,10 +3061,10 @@ async def test_discover_worktrees_unresolved_git_blames_host_not_repo(tmp_path):
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
     stderr = f"{mod._UNRESOLVED_TOOL_PREFIX}'git' in {mod._TRUSTED_PATH}"
-    with patch.object(repository_mod, "MAIN_REPO", str(repo)), \
-         patch.object(runtime_mod, "_run_cmd", new=AsyncMock(
-             return_value=(-1, "", stderr)
-         )):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", str(repo)),
+        patch.object(runtime_mod, "_run_cmd", new=AsyncMock(return_value=(-1, "", stderr))),
+    ):
         with pytest.raises(RuntimeError) as exc:
             await mod._discover_worktrees()
     msg = str(exc.value)
@@ -2725,10 +3083,14 @@ async def test_discover_worktrees_real_git_error_not_misclassified(tmp_path):
     surfaces git's own redacted, bounded message."""
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    with patch.object(repository_mod, "MAIN_REPO", str(repo)), \
-         patch.object(runtime_mod, "_run_cmd", new=AsyncMock(
-             return_value=(128, "", f"fatal: {mod._UNRESOLVED_TOOL_PREFIX}'hook'")
-         )):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", str(repo)),
+        patch.object(
+            runtime_mod,
+            "_run_cmd",
+            new=AsyncMock(return_value=(128, "", f"fatal: {mod._UNRESOLVED_TOOL_PREFIX}'hook'")),
+        ),
+    ):
         with pytest.raises(RuntimeError, match="worktree discovery failed"):
             await mod._discover_worktrees()
 
@@ -2736,12 +3098,12 @@ async def test_discover_worktrees_real_git_error_not_misclassified(tmp_path):
 @pytest.mark.asyncio
 async def test_sync_unresolved_git_names_override_not_path(monkeypatch):
     """/api/sync with no trusted git returns the same remedy-first message."""
-    with patch.object(repository_mod, "_git", new_callable=AsyncMock,
-                      return_value=mod.BASE_BRANCH), \
-         patch.object(worktree_ops_mod, "_venv_python",
-                      return_value=Path("/fake/.venv/bin/python")), \
-         patch.object(runtime_mod, "_trusted_bin", side_effect=lambda n: None), \
-         patch.object(worktree_ops_mod.dep_sync, "locked_console_scripts", return_value=[]):
+    with (
+        patch.object(repository_mod, "_git", new_callable=AsyncMock, return_value=mod.BASE_BRANCH),
+        patch.object(worktree_ops_mod, "_venv_python", return_value=Path("/fake/.venv/bin/python")),
+        patch.object(runtime_mod, "_trusted_bin", side_effect=lambda n: None),
+        patch.object(worktree_ops_mod.dep_sync, "locked_console_scripts", return_value=[]),
+    ):
         worktree_ops_mod._SYNC_RID = None
         res = await mod._sync()
     assert res["ok"] is False
@@ -2875,15 +3237,23 @@ async def test_worktree_remove_refuses_cherry_ahead_at_pinned_oid():
     """Non-forced removal with merged PR must fail if branch OID != PR headRefOid."""
     fake_wt = {"path": "/tmp/fake-wt", "branch": "feat-x", "is_main": False}
 
-    with patch.object(repository_mod, "_find_worktree", new=AsyncMock(return_value=(fake_wt, None))), \
-         patch.object(repository_mod, "_git", new=AsyncMock(return_value="local_oid_aaa")), \
-         patch.object(repository_mod, "_real_dirty", new=AsyncMock(return_value=False)), \
-         patch.object(fleet_state_mod, "_pr_status_cached", new=AsyncMock(return_value={"state": "MERGED", "number": 1})), \
-         patch.object(repository_mod, "_own_commits_count", new=AsyncMock(return_value=0)), \
-         patch.object(fleet_state_mod, "_fetch_pr_head_oid", new=AsyncMock(return_value="pr_oid_bbb")), \
-         patch.object(repository_mod, "_upstream_remote", new=AsyncMock(return_value="origin")), \
-         patch.object(runtime_mod, "_load_cfg", return_value=None), \
-         patch.object(runtime_mod, "_POD_AVAILABLE", False):
+    with (
+        patch.object(repository_mod, "_find_worktree", new=AsyncMock(return_value=(fake_wt, None))),
+        patch.object(repository_mod, "_git", new=AsyncMock(return_value="local_oid_aaa")),
+        patch.object(repository_mod, "_real_dirty", new=AsyncMock(return_value=False)),
+        patch.object(
+            fleet_state_mod,
+            "_pr_status_cached",
+            new=AsyncMock(return_value={"state": "MERGED", "number": 1}),
+        ),
+        patch.object(repository_mod, "_own_commits_count", new=AsyncMock(return_value=0)),
+        patch.object(
+            fleet_state_mod, "_fetch_pr_head_oid", new=AsyncMock(return_value="pr_oid_bbb")
+        ),
+        patch.object(repository_mod, "_upstream_remote", new=AsyncMock(return_value="origin")),
+        patch.object(runtime_mod, "_load_cfg", return_value=None),
+        patch.object(runtime_mod, "_POD_AVAILABLE", False),
+    ):
         result = await mod._worktree_remove("feat-x", force=False)
         assert result["ok"] is False
         assert "OID diverged" in result["error"]
@@ -2897,11 +3267,14 @@ async def test_worktree_remove_refuses_cherry_ahead_at_pinned_oid():
 @pytest.mark.asyncio
 async def test_fleet_handler_sandbox_error_returns_error_payload():
     """api_dev_fleet_fleet returns error payload when sandbox is unavailable."""
+
     async def boom():
         raise RuntimeError("sandbox unavailable: no backend")
 
-    with patch.object(fleet_state_mod, "_fleet_refresh", new=boom), \
-         patch.object(fleet_state_mod, "_fleet_cached", new=boom):
+    with (
+        patch.object(fleet_state_mod, "_fleet_refresh", new=boom),
+        patch.object(fleet_state_mod, "_fleet_cached", new=boom),
+    ):
         # Use a minimal app to test the handler
         app = web.Application()
         app.router.add_get("/api/fleet", mod.api_dev_fleet_fleet)
@@ -2918,6 +3291,7 @@ async def test_fleet_handler_missing_repo_returns_error_payload():
     """The missing-repo RuntimeError reaches the client as the error payload
     (the frontend renders it as the Discovery Error banner), not a silent
     empty fleet."""
+
     async def boom():
         raise RuntimeError(
             "main checkout not found: /nope/kirocrew is missing or not a git "
@@ -2925,8 +3299,10 @@ async def test_fleet_handler_missing_repo_returns_error_payload():
             "or clone it to ~/kirocrew."
         )
 
-    with patch.object(fleet_state_mod, "_fleet_refresh", new=boom), \
-         patch.object(fleet_state_mod, "_fleet_cached", new=boom):
+    with (
+        patch.object(fleet_state_mod, "_fleet_refresh", new=boom),
+        patch.object(fleet_state_mod, "_fleet_cached", new=boom),
+    ):
         app = web.Application()
         app.router.add_get("/api/fleet", mod.api_dev_fleet_fleet)
         async with TestClient(TestServer(app)) as client:
@@ -3013,9 +3389,11 @@ def test_discover_main_repo_finds_a_conventional_clone_location(monkeypatch, tmp
     checkout = _make_checkout(home / "Repos" / "KiroCrew")  # brand-ok: clone dir name
     monkeypatch.delenv("KIROCREW_DEVFLEET_REPO", raising=False)
     monkeypatch.delenv("KIROCREW_PROJECT_DIR", raising=False)
-    with patch.object(repository_mod, "_load_dev_fleet_cfg", return_value={}), \
-         patch.object(repository_mod, "_own_source_checkout", return_value=None), \
-         patch.object(repository_mod.Path, "home", staticmethod(lambda: home)):
+    with (
+        patch.object(repository_mod, "_load_dev_fleet_cfg", return_value={}),
+        patch.object(repository_mod, "_own_source_checkout", return_value=None),
+        patch.object(repository_mod.Path, "home", staticmethod(lambda: home)),
+    ):
         assert mod._discover_main_repo() == str(checkout)
 
 
@@ -3026,9 +3404,11 @@ def test_discover_main_repo_uses_the_filesystem_spelling(monkeypatch, tmp_path):
     checkout = _make_checkout(home / "repos" / "KIROCREW")
     monkeypatch.delenv("KIROCREW_DEVFLEET_REPO", raising=False)
     monkeypatch.delenv("KIROCREW_PROJECT_DIR", raising=False)
-    with patch.object(repository_mod, "_load_dev_fleet_cfg", return_value={}), \
-         patch.object(repository_mod, "_own_source_checkout", return_value=None), \
-         patch.object(repository_mod.Path, "home", staticmethod(lambda: home)):
+    with (
+        patch.object(repository_mod, "_load_dev_fleet_cfg", return_value={}),
+        patch.object(repository_mod, "_own_source_checkout", return_value=None),
+        patch.object(repository_mod.Path, "home", staticmethod(lambda: home)),
+    ):
         assert mod._discover_main_repo() == str(checkout)
 
 
@@ -3038,9 +3418,11 @@ def test_discover_main_repo_ignores_an_unmarked_conventional_location(monkeypatc
     (home / "kirocrew").mkdir(parents=True)
     monkeypatch.delenv("KIROCREW_DEVFLEET_REPO", raising=False)
     monkeypatch.delenv("KIROCREW_PROJECT_DIR", raising=False)
-    with patch.object(repository_mod, "_load_dev_fleet_cfg", return_value={}), \
-         patch.object(repository_mod, "_own_source_checkout", return_value=None), \
-         patch.object(repository_mod.Path, "home", staticmethod(lambda: home)):
+    with (
+        patch.object(repository_mod, "_load_dev_fleet_cfg", return_value={}),
+        patch.object(repository_mod, "_own_source_checkout", return_value=None),
+        patch.object(repository_mod.Path, "home", staticmethod(lambda: home)),
+    ):
         assert mod._discover_main_repo() == ""
 
 
@@ -3049,7 +3431,10 @@ async def test_discover_worktrees_without_a_repo_never_runs_git():
     """`git -C ""` answers for the backend's own working directory, so an
     unresolved repo must not reach git at all."""
     run = AsyncMock(return_value=(0, "", ""))
-    with patch.object(repository_mod, "MAIN_REPO", ""), patch.object(runtime_mod, "_run_cmd", new=run):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", ""),
+        patch.object(runtime_mod, "_run_cmd", new=run),
+    ):
         with pytest.raises(mod.RepoNotConfigured):
             await mod._discover_worktrees()
     run.assert_not_awaited()
@@ -3058,9 +3443,11 @@ async def test_discover_worktrees_without_a_repo_never_runs_git():
 @pytest.mark.asyncio
 async def test_upstream_remote_without_a_repo_never_runs_git():
     run = AsyncMock(return_value=(0, "", ""))
-    with patch.object(repository_mod, "MAIN_REPO", ""), \
-         patch.object(repository_mod, "_UPSTREAM_REMOTE", None), \
-         patch.object(runtime_mod, "_run_cmd", new=run):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", ""),
+        patch.object(repository_mod, "_UPSTREAM_REMOTE", None),
+        patch.object(runtime_mod, "_run_cmd", new=run),
+    ):
         assert await mod._upstream_remote() == "origin"
     run.assert_not_awaited()
 
@@ -3076,11 +3463,14 @@ async def test_fleet_handler_reports_needs_setup_without_an_error():
     """No checkout found is a setup state, not a failure: the payload carries
     ``needs_setup`` and NO ``error``, so the page asks where the checkout is
     instead of rendering a red banner against a path the user never chose."""
+
     async def unconfigured():
         raise mod.RepoNotConfigured("no Kiro Crew checkout found to manage")
 
-    with patch.object(fleet_state_mod, "_fleet_refresh", new=unconfigured), \
-         patch.object(fleet_state_mod, "_fleet_cached", new=unconfigured):
+    with (
+        patch.object(fleet_state_mod, "_fleet_refresh", new=unconfigured),
+        patch.object(fleet_state_mod, "_fleet_cached", new=unconfigured),
+    ):
         app = web.Application()
         app.router.add_get("/api/fleet", mod.api_dev_fleet_fleet)
         async with TestClient(TestServer(app)) as client:
@@ -3097,9 +3487,13 @@ async def test_discover_worktrees_refuses_a_configured_non_kirocrew_repo():
     DISCOVERY so a typo is not silently replaced by a found checkout — that must
     not also mean the wrong tree gets `worktree remove` run inside it."""
     run = AsyncMock(return_value=(0, "worktree /some/other/repo\n", ""))
-    with patch.object(repository_mod, "MAIN_REPO", "/some/other/repo"), \
-         patch.object(repository_mod, "_REPO_INVALID_MSG", "not a Kiro Crew checkout: /some/other/repo ..."), \
-         patch.object(runtime_mod, "_run_cmd", new=run):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", "/some/other/repo"),
+        patch.object(
+            repository_mod, "_REPO_INVALID_MSG", "not a Kiro Crew checkout: /some/other/repo ..."
+        ),
+        patch.object(runtime_mod, "_run_cmd", new=run),
+    ):
         with pytest.raises(mod.RepoUnreadable) as exc:
             await mod._discover_worktrees()
     # Refused BEFORE git ran: a readable wrong repo answers `worktree list`
@@ -3121,12 +3515,14 @@ async def test_auto_prune_reaper_idles_for_a_configured_non_kirocrew_repo():
     """
     prune = AsyncMock()
     sel = MagicMock()
-    with patch.object(repository_mod, "MAIN_REPO", "/some/other/repo"), \
-         patch.object(repository_mod, "_REPO_INVALID_MSG", "not a Kiro Crew checkout: ..."), \
-         patch.object(worktree_ops_mod, "_auto_prune_cfg", return_value=(True, 0.01)), \
-         patch.object(worktree_ops_mod, "_auto_prune_once", new=prune), \
-         patch.object(runtime_mod, "_sel", return_value=sel), \
-         patch.object(worktree_ops_mod, "asyncio", wraps=asyncio) as aio:
+    with (
+        patch.object(repository_mod, "MAIN_REPO", "/some/other/repo"),
+        patch.object(repository_mod, "_REPO_INVALID_MSG", "not a Kiro Crew checkout: ..."),
+        patch.object(worktree_ops_mod, "_auto_prune_cfg", return_value=(True, 0.01)),
+        patch.object(worktree_ops_mod, "_auto_prune_once", new=prune),
+        patch.object(runtime_mod, "_sel", return_value=sel),
+        patch.object(worktree_ops_mod, "asyncio", wraps=asyncio) as aio,
+    ):
         aio.sleep = AsyncMock(side_effect=[None, asyncio.CancelledError()])
         with pytest.raises(asyncio.CancelledError):
             await mod._auto_prune_reaper()
@@ -3139,8 +3535,12 @@ async def test_sync_refuses_a_configured_non_kirocrew_repo():
     """The gate lives in the accessor, not the discovery funnel: sync and the
     refresher never pass through _discover_worktrees, and `pull --ff-only` plus
     `pip install -e` inside an unrelated repository is the worst outcome here."""
-    with patch.object(repository_mod, "MAIN_REPO", "/some/other/repo"), \
-         patch.object(repository_mod, "_REPO_INVALID_MSG", "not a Kiro Crew checkout: /some/other/repo ..."):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", "/some/other/repo"),
+        patch.object(
+            repository_mod, "_REPO_INVALID_MSG", "not a Kiro Crew checkout: /some/other/repo ..."
+        ),
+    ):
         res = await mod._sync_start_locked()
     assert res["ok"] is False
     assert "not a Kiro Crew checkout" in res["error"]
@@ -3149,9 +3549,13 @@ async def test_sync_refuses_a_configured_non_kirocrew_repo():
 @pytest.mark.asyncio
 async def test_status_refresher_idles_for_a_configured_non_kirocrew_repo():
     run = AsyncMock(return_value=(0, "", ""))
-    with patch.object(repository_mod, "MAIN_REPO", "/some/other/repo"), \
-         patch.object(repository_mod, "_REPO_INVALID_MSG", "not a Kiro Crew checkout: /some/other/repo ..."), \
-         patch.object(runtime_mod, "_run_cmd", new=run):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", "/some/other/repo"),
+        patch.object(
+            repository_mod, "_REPO_INVALID_MSG", "not a Kiro Crew checkout: /some/other/repo ..."
+        ),
+        patch.object(runtime_mod, "_run_cmd", new=run),
+    ):
         await mod._status_refresher()
     # Returned without fetching: no git ran against the unrelated repository.
     run.assert_not_awaited()
@@ -3160,25 +3564,40 @@ async def test_status_refresher_idles_for_a_configured_non_kirocrew_repo():
 def test_repo_accessor_gates_both_unusable_states():
     """Both states raise from the accessor, and both share a base so a degrading
     caller cannot enumerate only the reason that existed when it was written."""
-    with patch.object(repository_mod, "MAIN_REPO", ""), patch.object(repository_mod, "_REPO_INVALID_MSG", None):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", ""),
+        patch.object(repository_mod, "_REPO_INVALID_MSG", None),
+    ):
         with pytest.raises(mod.RepoNotConfigured):
             mod._repo()
-    with patch.object(repository_mod, "MAIN_REPO", "/x"), patch.object(repository_mod, "_REPO_INVALID_MSG", "bad"):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", "/x"),
+        patch.object(repository_mod, "_REPO_INVALID_MSG", "bad"),
+    ):
         with pytest.raises(mod.RepoUnreadable):
             mod._repo()
     assert issubclass(mod.RepoNotConfigured, mod.RepoUnavailable)
     assert issubclass(mod.RepoUnreadable, mod.RepoUnavailable)
-    with patch.object(repository_mod, "MAIN_REPO", "/good"), patch.object(repository_mod, "_REPO_INVALID_MSG", None):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", "/good"),
+        patch.object(repository_mod, "_REPO_INVALID_MSG", None),
+    ):
         assert mod._repo() == "/good"
 
 
 @pytest.mark.asyncio
 async def test_discover_worktrees_proceeds_for_a_validated_checkout():
-    with patch.object(repository_mod, "MAIN_REPO", "/good/kirocrew"), \
-         patch.object(repository_mod, "_REPO_INVALID_MSG", None), \
-         patch.object(runtime_mod, "_run_cmd", new=AsyncMock(
-             return_value=(0, "worktree /good/kirocrew\nbranch refs/heads/main\n", "")
-         )):
+    with (
+        patch.object(repository_mod, "MAIN_REPO", "/good/kirocrew"),
+        patch.object(repository_mod, "_REPO_INVALID_MSG", None),
+        patch.object(
+            runtime_mod,
+            "_run_cmd",
+            new=AsyncMock(
+                return_value=(0, "worktree /good/kirocrew\nbranch refs/heads/main\n", "")
+            ),
+        ),
+    ):
         entries = await mod._discover_worktrees()
     assert entries and entries[0]["is_main"] is True
 
@@ -3222,7 +3641,9 @@ async def test_unreadable_repo_answers_a_coded_409_too():
     secret = "s" * 32
 
     async def boom(request):
-        raise mod.RepoUnreadable("main checkout not found: /opt/kc is missing or not a git checkout.")
+        raise mod.RepoUnreadable(
+            "main checkout not found: /opt/kc is missing or not a git checkout."
+        )
 
     app = web.Application(middlewares=[mod.hmac_proxy_middleware])
     app.router.add_get("/api/prune-candidates", boom)
@@ -3239,11 +3660,16 @@ async def test_unreadable_repo_answers_a_coded_409_too():
 async def test_fleet_handler_still_reports_an_unreadable_repo_as_an_error():
     """/fleet is the one route that distinguishes them: unreadable keeps the
     error payload (the Discovery Error banner names the path the user chose)."""
-    async def boom():
-        raise mod.RepoUnreadable("main checkout not found: /opt/kc is missing or not a git checkout.")
 
-    with patch.object(fleet_state_mod, "_fleet_refresh", new=boom), \
-         patch.object(fleet_state_mod, "_fleet_cached", new=boom):
+    async def boom():
+        raise mod.RepoUnreadable(
+            "main checkout not found: /opt/kc is missing or not a git checkout."
+        )
+
+    with (
+        patch.object(fleet_state_mod, "_fleet_refresh", new=boom),
+        patch.object(fleet_state_mod, "_fleet_cached", new=boom),
+    ):
         app = web.Application()
         app.router.add_get("/api/fleet", mod.api_dev_fleet_fleet)
         async with TestClient(TestServer(app)) as client:
@@ -3262,7 +3688,9 @@ def test_repo_source_hint_names_the_env_var(monkeypatch):
 
 def test_repo_source_hint_names_the_config_key(monkeypatch):
     monkeypatch.delenv("KIROCREW_DEVFLEET_REPO", raising=False)
-    with patch.object(repository_mod, "_load_dev_fleet_cfg", return_value={"repo_path": "/typo/kc"}):
+    with patch.object(
+        repository_mod, "_load_dev_fleet_cfg", return_value={"repo_path": "/typo/kc"}
+    ):
         hint = mod._repo_source_hint()
     assert "config.json" in hint
     assert "environment variable" not in hint
@@ -3409,9 +3837,7 @@ def test_the_neutralizers_answer_from_the_real_object_graph(tmp_path, monkeypatc
     # Ungrafted the reading is the truth; grafted it is not. Both are asserted so
     # neither half of the pin can rot silently.
     assert run("rev-list", "--count", "HEAD") == "2"
-    assert (
-        run("rev-list", "--count", "HEAD", env={"GIT_NO_REPLACE_OBJECTS": "1"}) == "3"
-    )
+    assert run("rev-list", "--count", "HEAD", env={"GIT_NO_REPLACE_OBJECTS": "1"}) == "3"
     assert run("rev-list", "--count", "HEAD", env=mod._GIT_ENV_NEUTRALIZERS) == "3"
 
     # Nothing reached the decoy, so the allowlist rather than luck is what kept
@@ -3427,11 +3853,16 @@ def test_the_neutralizers_answer_from_the_real_object_graph(tmp_path, monkeypatc
 def test_audited_decorator_applied_to_mutations():
     """All mutating handlers are wrapped by _audited."""
     import inspect
+
     for name in [
-        "api_dev_fleet_sync", "api_dev_fleet_worktree_remove",
-        "api_dev_fleet_prune_run", "api_dev_fleet_pod_up",
-        "api_dev_fleet_pod_down", "api_dev_fleet_pod_restart",
-        "api_dev_fleet_pod_token", "api_dev_fleet_pod_provision",
+        "api_dev_fleet_sync",
+        "api_dev_fleet_worktree_remove",
+        "api_dev_fleet_prune_run",
+        "api_dev_fleet_pod_up",
+        "api_dev_fleet_pod_down",
+        "api_dev_fleet_pod_restart",
+        "api_dev_fleet_pod_token",
+        "api_dev_fleet_pod_provision",
         "api_dev_fleet_pod_provision_dismiss",
         "api_dev_fleet_rebase",
     ]:
@@ -3483,7 +3914,7 @@ def test_backend_spawn_env_passes_project_dir(monkeypatch):
     import kiro_crew.apps.backend as backend_mod
 
     src = inspect.getsource(backend_mod)
-    assert 'KIROCREW_HOME=str(config_dir())' in src
+    assert "KIROCREW_HOME=str(config_dir())" in src
     assert '"KIROCREW_PROJECT_DIR"' in src
 
 
