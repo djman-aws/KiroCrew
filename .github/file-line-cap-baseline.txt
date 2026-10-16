@@ -186,7 +186,6 @@
 2200 test/test_app_backend_composition_contract.py
 4051 test/test_app_manager.py
 2324 test/test_app_manifest.py
-5489 test/test_apps_backend_coverage.py
 5277 test/test_apps_registry.py
 2094 test/test_apps_registry_composition_contract.py
 5531 test/test_apps_routes_coverage.py
@@ -263,7 +262,6 @@
 4162 test/test_gateway_appkit_endpoints.py
 4437 test/test_github_pull_request_monitor.py
 2349 test/test_governance_chokepoints.py
-5410 test/test_governance_distribution.py
 2539 test/test_governance_policy.py
 3102 test/test_handlers_memory_coverage.py
 2261 test/test_handlers_messaging_coverage.py
