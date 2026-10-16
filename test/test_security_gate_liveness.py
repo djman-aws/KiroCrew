@@ -356,7 +356,11 @@ def _url_payload_command(n: int) -> str:
 #: ``_approved_oauth_authorization_endpoint`` and the facade export. The rationale
 #: lives in the security spec, not the package. An approved endpoint gets exactly
 #: the builtin set's exemption; no pattern, threshold or pass moved.
-_PACKAGE_LINE_BUDGET = 29_492
+#:
+#: Raised again, from 29,492, for the one ``pinned-order`` entry in
+#: ``paths._CREW_SECRET_LEAVES``: the person's pinned-session order is fenced from
+#: agent file tools like ``tag-grants`` beside it.
+_PACKAGE_LINE_BUDGET = 29_493
 
 #: Ceiling on any ONE file in the package. This is what the bound is really for --
 #: a package total says nothing about a single file growing back into a second
