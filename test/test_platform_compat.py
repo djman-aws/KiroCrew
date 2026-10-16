@@ -36,6 +36,7 @@ import pytest
 from kiro_crew import platform_compat as pc
 from kiro_crew import windows_acl
 from kiro_crew.testing.ids import UNALLOCATABLE_PID
+from kiro_crew.testing.wait import wait_until
 
 # This file replaces ctypes.CDLL, find_library or a cached libc handle for a test,
 # so the shared macOS handle caches are put back after each one (see conftest.py).
@@ -2075,11 +2076,11 @@ class TestProcessIdentityPosix:
             if pc.IS_POSIX:
                 # /proc/<pid>/cmdline is guaranteed populated after exec, but
                 # keep a short retry for edge cases on exotic kernels.
-                deadline = time.monotonic() + 10.0
-                result = pc.process_matches(child.pid, (token,))
-                while not result and time.monotonic() < deadline:
-                    time.sleep(0.05)
-                    result = pc.process_matches(child.pid, (token,))
+                result = wait_until(
+                    lambda: pc.process_matches(child.pid, (token,)),
+                    timeout=10.0,
+                    describe=lambda: f"process_matches never returned True for {child.pid}",
+                )
                 assert result is True
         finally:
             child.kill()
@@ -2150,16 +2151,10 @@ class TestProcessArgvMatchesExact:
         and on Windows one read is a PowerShell ``Get-CimInstance`` spawn with
         its own 10 s timeout that answers "" when it runs out.
         """
-        start = time.monotonic()
-        reads = 1
-        result = pc.process_argv_matches_exact(pid, argv)
-        while not result and time.monotonic() - start < _ARGV_READ_CEILING_SECS:
-            time.sleep(0.05)
-            reads += 1
-            result = pc.process_argv_matches_exact(pid, argv)
-        assert result is True, (
-            f"argv never matched in {time.monotonic() - start:.1f}s over {reads} read(s); "
-            f"last command line {pc.process_command_line(pid)!r}"
+        wait_until(
+            lambda: pc.process_argv_matches_exact(pid, argv),
+            timeout=_ARGV_READ_CEILING_SECS,
+            describe=lambda: f"last command line {pc.process_command_line(pid)!r}",
         )
 
     def test_exact_argv_matches_and_near_misses_do_not(self):
@@ -3603,13 +3598,14 @@ class TestProcessDescendants:
         try:
             # Pin our own objects separately so a regression dropping returned
             # handles cannot strand the native fixture's processes in teardown.
-            deadline = time.monotonic() + 10
-            while not all(
-                (tmp_path / name).exists() and (tmp_path / name).stat().st_size
-                for name in ("middle", "leaf", "ready")
-            ):
-                assert time.monotonic() < deadline, "owned process chain did not start"
-                time.sleep(0.01)
+            wait_until(
+                lambda: all(
+                    (tmp_path / name).exists() and (tmp_path / name).stat().st_size
+                    for name in ("middle", "leaf", "ready")
+                ),
+                timeout=10,
+                describe=lambda: "owned process chain did not start",
+            )
             middle = int((tmp_path / "middle").read_text())
             leaf = int((tmp_path / "leaf").read_text())
             for child_pid in (root.pid, middle, leaf):
@@ -3624,20 +3620,23 @@ class TestProcessDescendants:
                 scans += 1
                 if scans == 2:
                     (tmp_path / "exit").write_text("exit", encoding="utf-8")
-                    deadline = time.monotonic() + 5
-                    while pc.process_handle_active(cleanup[middle]):
-                        assert time.monotonic() < deadline, "owned intermediary did not exit"
-                        time.sleep(0.01)
+                    wait_until(
+                        lambda: not pc.process_handle_active(cleanup[middle]),
+                        timeout=5,
+                        describe=lambda: "owned intermediary did not exit",
+                    )
                 result = snapshot()
                 if scans == 1:
                     assert result[middle] == root.pid and result[leaf] == middle
                 else:
                     # Exit status can precede removal from Toolhelp. Wait for
                     # the snapshot gap this fixture intends to exercise.
-                    deadline = time.monotonic() + 5
-                    while middle in result and time.monotonic() < deadline:
-                        time.sleep(0.01)
+                    def _poll_snapshot():
+                        nonlocal result
                         result = snapshot()
+                        return middle not in result
+
+                    wait_until(_poll_snapshot, timeout=5)
                     assert middle not in result and result[leaf] == middle
                 return result
 
@@ -3646,10 +3645,11 @@ class TestProcessDescendants:
             assert leaf in handles
             assert pc.process_handle_active(handles[leaf])
             assert pc.terminate_process_handle(handles[leaf])
-            deadline = time.monotonic() + 5
-            while pc.process_handle_active(cleanup[leaf]):
-                assert time.monotonic() < deadline, "retained grandchild did not terminate"
-                time.sleep(0.01)
+            wait_until(
+                lambda: not pc.process_handle_active(cleanup[leaf]),
+                timeout=5,
+                describe=lambda: "retained grandchild did not terminate",
+            )
         finally:
             # Kill only objects this test spawned, never services or a PID tree.
             (tmp_path / "abort").touch()
@@ -3661,10 +3661,11 @@ class TestProcessDescendants:
                 if root.poll() is None:
                     root.kill()
                 root.wait(timeout=5)
-                deadline = time.monotonic() + 5
-                while any(pc.process_handle_active(handle) for handle in cleanup.values()):
-                    assert time.monotonic() < deadline, "owned fixture process survived cleanup"
-                    time.sleep(0.01)
+                wait_until(
+                    lambda: not any(pc.process_handle_active(h) for h in cleanup.values()),
+                    timeout=5,
+                    describe=lambda: "owned fixture process survived cleanup",
+                )
             finally:
                 for handle in (*handles.values(), *cleanup.values()):
                     pc.close_process_handle(handle)
@@ -3679,17 +3680,12 @@ class TestProcessDescendants:
         root_handle = pc._open_process_termination_handle(os.getpid())
         assert root_handle is not None
         try:
-            deadline = time.monotonic() + 5
-            while child.pid not in handles and time.monotonic() < deadline:
-                handles.update(
-                    pc.descendant_termination_handles(
-                        os.getpid(),
-                        handles,
-                        root_handle,
-                    )
-                )
-                if child.pid not in handles:
-                    time.sleep(0.05)
+
+            def _find_handle():
+                handles.update(pc.descendant_termination_handles(os.getpid(), handles, root_handle))
+                return child.pid in handles
+
+            wait_until(_find_handle, timeout=5)
             assert child.pid in handles
             assert pc.terminate_process_handle(handles[child.pid]) is True
             child.wait(timeout=5)
@@ -4253,9 +4249,7 @@ class TestKillSubprocessPosix:
             # Reap the killed child so it is not left a zombie occupying the
             # PID; otherwise os.kill(pid, 0) would still report it as existing.
             child.wait(timeout=5)
-            deadline = time.monotonic() + 2.0
-            while pc.pid_exists(child.pid) and time.monotonic() < deadline:
-                time.sleep(0.02)
+            wait_until(lambda: not pc.pid_exists(child.pid), timeout=2.0)
             assert pc.pid_exists(child.pid) is False
         finally:
             if child.poll() is None:
@@ -4279,9 +4273,7 @@ class TestKillSubprocessPosix:
             assert pc.pid_exists(child.pid) is True
             assert pc.kill_process_tree(child.pid, pc.SIGKILL) is True
             child.wait(timeout=5)
-            deadline = time.monotonic() + 2.0
-            while pc.pid_exists(child.pid) and time.monotonic() < deadline:
-                time.sleep(0.02)
+            wait_until(lambda: not pc.pid_exists(child.pid), timeout=2.0)
             assert pc.pid_exists(child.pid) is False
         finally:
             if child.poll() is None:
@@ -5869,11 +5861,10 @@ def test_process_descendants_snapshots_a_new_session_grandchild():
     try:
         assert proc.stdout is not None
         grandchild = int(proc.stdout.readline().strip())
-        deadline = time.monotonic() + 5.0
-        while time.monotonic() < deadline:
-            if grandchild in platform_compat.process_descendants(proc.pid):
-                break
-            time.sleep(0.05)
+        wait_until(
+            lambda: grandchild in platform_compat.process_descendants(proc.pid),
+            timeout=5.0,
+        )
         descendants = platform_compat.process_descendants(proc.pid)
         assert grandchild in descendants
         # It is genuinely outside the parent's process group -- otherwise this

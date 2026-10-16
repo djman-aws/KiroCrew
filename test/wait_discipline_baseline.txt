@@ -197,7 +197,6 @@
  1 test_issue_radar_http_routes_seams.py
  2 test_issue_radar_list_probe.py
  2 test_job_routes.py
-16 test_job_sdk.py
  1 test_kas_hooks_acp.py
  4 test_kas_login_api.py
  1 test_kas_login_loopback.py
@@ -274,7 +273,6 @@
  6 test_pathres_loop_starvation.py
  1 test_pid_lifecycle_process_sweeps.py
  2 test_plan_mode.py
-11 test_platform_compat.py
  3 test_platform_log_append.py
  1 test_pod_e2e_video_guard.py
  2 test_pod_windows_boot.py
@@ -373,7 +371,6 @@
  4 test_start_priority.py
  1 test_stop_kill_cancel.py
  1 test_stt_config_field_types.py
-14 test_stt_endpointing.py
  3 test_stt_session.py
  4 test_stub_bridge_liveness.py
  4 test_stub_broker_reconnect.py
@@ -392,17 +389,14 @@
  1 test_subagent_stall_activity_scope.py
  1 test_subagent_tool_approval_crew_log.py
  1 test_subagent_turn_identity.py
-12 test_subprocess_pool.py
  2 test_tag_session.py
  1 test_task_runner_compaction.py
- 7 test_taskq_runner_adapter.py
  2 test_taskq_startup.py
- 9 test_taskrunner.py
  1 test_taskrunner_atomic_persistence.py
  2 test_taskrunner_coverage.py
  2 test_taskrunner_execution_capture_async.py
  2 test_taskrunner_execution_context.py
- 7 test_taskrunner_retry_admission.py
+ 1 test_telegram.py
  3 test_telegram_album.py
  1 test_telegram_parity.py
  6 test_telegram_sessions.py
@@ -419,11 +413,9 @@
  3 test_turn_dispatch.py
  7 test_unattended_slot_guardrails.py
  4 test_update_check_install_aware.py
-10 test_update_installer_graceful_stop.py
  2 test_update_ownership.py
  1 test_vector_commit_failures.py
  4 test_vector_memory.py
-14 test_voice_streaming.py
  1 test_wait_tool_early_end.py
  2 test_wake_judge_feedback.py
  5 test_webhook_generated_session_key.py
