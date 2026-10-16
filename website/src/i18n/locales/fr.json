@@ -11324,6 +11324,10 @@
         "needs_earlier_history_count_many": "Sélectionnez pour charger l’historique antérieur – {{count}} messages antérieurs restants",
         "needs_earlier_history_count_other": "Sélectionnez pour charger l’historique antérieur – {{count}} messages antérieurs restants",
         "share_message": "Partager en image",
+        "fork_with_history": "Bifurquer avec les messages antérieurs",
+        "fork_without_earlier_messages": "Bifurquer sans les messages antérieurs",
+        "fork_with_history_hint": "Démarre une nouvelle conversation avec ce message et les précédents. Cette conversation n'est pas modifiée.",
+        "fork_without_earlier_messages_hint": "Démarre une nouvelle conversation avec uniquement les messages qui suivent celui-ci, sans ce message. Cette conversation n'est pas modifiée.",
         "copy_failed": "Échec de la copie",
         "quote_message": "Citer le message"
       },

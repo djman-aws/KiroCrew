@@ -11324,6 +11324,10 @@
         "needs_earlier_history_count_many": "Selecione para carregar o histórico anterior: restam {{count}} mensagens anteriores",
         "needs_earlier_history_count_other": "Selecione para carregar o histórico anterior: restam {{count}} mensagens anteriores",
         "share_message": "Compartilhar como imagem",
+        "fork_with_history": "Bifurcar com as mensagens anteriores",
+        "fork_without_earlier_messages": "Bifurcar sem as mensagens anteriores",
+        "fork_with_history_hint": "Inicia uma nova conversa com esta mensagem e as anteriores. Esta conversa não é alterada.",
+        "fork_without_earlier_messages_hint": "Inicia uma nova conversa só com as mensagens posteriores a esta, sem esta mensagem. Esta conversa não é alterada.",
         "copy_failed": "Falha ao copiar",
         "quote_message": "Citar mensagem"
       },
