@@ -248,8 +248,13 @@ export default function ChatPane({
   const crewmateLive = running || !!paneSlot?.running
   // The typing bubble shows from the person's Send, not only once the turn
   // that answers is live (useCrewmateAwaitingReply).
-  const { awaitingReply, markSent: markCrewmateSent } = useCrewmateAwaitingReply(!!crewmate, slotKey, allMessages, crewmateLive)
+  const { awaitingReply, markSent: markCrewmateSent } = useCrewmateAwaitingReply(!!crewmate, slotKey, allMessages, crewmateLive, paneSlot)
   const crewmateTyping = crewmateLive || awaitingReply
+  // The composer agrees with the typing bubble: from the person's Send it is
+  // busy (Stop while empty), not idle, though the answering turn's first frame
+  // can be seconds away. `busy` alone is the store's word, and the store has
+  // no pending-turn mark for a slot that is not the active one.
+  const composerBusy = busy || awaitingReply
   // Queued rows are drawn in place from the slot's full row list, so a parked
   // message sits where it was sent (`withQueuedAsBubbles`).
   const messages = useMemo(
@@ -459,7 +464,7 @@ export default function ChatPane({
   })
   const { recoverInto: recoverQuoteInto } = messageQuote
 
-  const { stopError, dismissStopError, paneStopState, onStop } = useChatPaneStop({ slotKey, busy, paneSlot, dispatch })
+  const { stopError, dismissStopError, paneStopState, onStop } = useChatPaneStop({ slotKey, busy: composerBusy, paneSlot, dispatch })
   // The endpointer auto-submit (handed to the Voice atom above) is an Enter
   // press: the composer's default busy decision with this pane's own composer
   // inputs (never the flipped chord), so it steers where Send would steer.
@@ -478,7 +483,7 @@ export default function ChatPane({
   // the hook reads THIS slot's rows and run state. `paneSlot.running` joins the
   // stream state because a background slot only hears about a turn from frames
   // this tab was connected for.
-  const resume = useChatPaneContinue({ slotKey, messages, turnRunning: busy || !!paneSlot?.running })
+  const resume = useChatPaneContinue({ slotKey, messages, turnRunning: busy || !!paneSlot?.running, sendPending: awaitingReply })
   // The same queue-card recipe the single-chat surface runs (#5891), owned once
   // so the two cannot drift again the way #2240 found them drifted.
   //
@@ -942,7 +947,7 @@ export default function ChatPane({
           onSend={doSend}
           terminalCommands={!paneSlot ? 'pending' : paneSlot.executor === 'remote' ? 'remote' : 'local'}
           hiddenCommands={paneHiddenCommands}
-          isRunning={busy}
+          isRunning={composerBusy}
           onStop={onStop}
           isQueued={streamState === 'stopping' || !!paneSlot?.stopping}
           stopState={paneStopState}

@@ -1878,8 +1878,10 @@ button on the newest error row. The DM is never the store's active slot, so
 `ChatPane` asks about its own slot (`useChatPaneContinue`):
 `selectContinuable(state, slot)` and `selectTurnInterrupted(state, slot)` read
 that slot's rows, its stream state and the slots frame's `running` / `stopping`,
-not the active mirror. Either press is `POST /api/chat/slots/{slot}/continue`,
-sent by `useContinuePress`, the same hook ChatPage uses. The gateway re-checks
+not the active mirror, and neither Resume shows while the pane's own send still
+waits for its answer (the typing-bubble wait, below). Either press is
+`POST /api/chat/slots/{slot}/continue`, sent by `useContinuePress`, the same
+hook ChatPage uses. The gateway re-checks
 under the slot lock, and a refusal shows above the composer as "Couldn't
 continue" with the gateway's reason; a turn starting retires it. An error card
 with a remedy of its own (a context overflow, a repeated session start, a
@@ -2810,9 +2812,20 @@ no assistant row (speech or the say-nothing row of a quiet end), error, stop
 card, pending approval or change card. A refused send's bubble is gone, so it
 waits on nothing. A live turn that ends while the send is not parked in the
 queue ends the wait too (the turn that answers it wrote no row); a turn that
-ends while the send is still queued is the one before it. Until the answering
+ends while the send is still queued is the one before it. So does a slots
+frame, while the slot is not live, naming a different turn than the one
+current at Send (`turn`, or `turn_gen` after a gateway restart): the answering
+turn began and ended between two coalesced frames. Until the answering
 turn is live the caption reads the pill's `working` phase, never the slot's
 stale status record from the last turn.
+
+The composer reads the same wait as busy (`ChatPane`'s `composerBusy`), so
+from the Send it shows Stop while empty, not the idle Send, and Resume is
+withheld in both places (`useChatPaneContinue`'s `sendPending`). The DM is
+never the store's active slot, so the store holds no pending-turn mark for it
+the way ChatPage's `startLocalTurn` does; without the wait, the person's own
+row, confirmed and unanswered, reads as an interrupted turn until a frame
+shows the slot running.
 
 The crewmate `ChatPane` sends `responsive: true` on its normal Send request.
 Submitting a native question's answer while its turn runs additionally carries
