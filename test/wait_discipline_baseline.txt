@@ -370,7 +370,7 @@
  1 test_slots_broadcast_byte_pacing.py
  1 test_snapshot.py
  6 test_snapshot_memory_stores.py
- 1 test_source_providers.py
+ 1 test_source_providers_gitlab_host.py
  1 test_spawn_admission_verdict_census.py
 12 test_spawn_approval_channel_delivery_2381.py
  1 test_spawn_approval_channel_governance_13491.py
