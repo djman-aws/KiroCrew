@@ -73,6 +73,7 @@ from kiro_crew.config.sections import (
     DECISION_MODEL_ROUTE_TIERS,
     FOLDER_SORT_MODES,
     JUDGE_PROVIDERS,
+    SESSION_SORT_MODES,
     STT_LANGUAGE_AUTO,
     TITLE_REFRESH_EVERY_TURNS_MAX,
     TRANSCRIBE_LANGUAGES_MAX,
@@ -3161,6 +3162,9 @@ _EDITABLE_CONFIG: dict[str, dict] = {
     # the kirocrew-dashboard MCP server reads back, so the two draw the tree in
     # the same order; the enum is the loader's own list, spelled once.
     "dashboard.folder_sort": {"type": "enum", "values": list(FOLDER_SORT_MODES)},
+    # The sidebar's session sort key, written by the sort menu; the enum is the
+    # loader's own list, spelled once.
+    "dashboard.session_sort": {"type": "enum", "values": list(SESSION_SORT_MODES)},
     # Per-version snooze/skip verdict for the proactive update popup, written
     # as ONE atomic record: the three fields only mean anything together, so
     # per-field writes would open both a crash window (old verdict paired

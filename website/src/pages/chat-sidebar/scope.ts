@@ -183,7 +183,10 @@ export interface SidebarScope {
   setCollapsedHistoryGroups: SetState<Set<string>>
   setFolderModal: SetState<FolderModalTarget | null>
   sortKey: SortKey
-  setSortKey: SetState<SortKey>
+  setSortKey: (key: SortKey) => void
+  /** Why the last sort pick did not save ('' for none), and its dismiss. */
+  sortError: string
+  dismissSortError: () => void
   flatView: boolean
   conductorView: boolean
   creatingSlot: RootState['chat']['creatingSlot']

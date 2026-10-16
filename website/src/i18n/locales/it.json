@@ -12758,6 +12758,7 @@
       "folders_load_failed": "Impossibile caricare le cartelle",
       "columns_load_failed": "Impossibile caricare le colonne della board",
       "folder_update_failed": "Aggiornamento della cartella non riuscito",
+      "sort_update_failed": "Aggiornamento dell'ordinamento non riuscito",
       "close_refused_title": "Impossibile chiudere la sessione",
       "close_refused": "«{{title}}» sta ancora salvando l’ultimo turno. Chiudila di nuovo tra qualche secondo.",
       "close_refused_other": "«{{title}}» è ancora aperta: la chiusura non è riuscita.",

@@ -689,6 +689,62 @@ class TestFolderSortRoundTrip:
         assert field.default == FOLDER_SORT_DEFAULT == "custom"
 
 
+# ── Sidebar session sort ─────────────────────────────────────────────────
+
+
+class TestSessionSortRoundTrip:
+    """``dashboard.session_sort`` is the one stored copy of the sidebar's session
+    order, written by the sort menu, so it follows the person to every browser:
+    what a PATCH stores must be what a fresh load reads, and nothing outside the
+    sort-key list may land."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "key", ["date-desc", "date-asc", "created-desc", "created-asc", "name-asc", "name-desc"]
+    )
+    async def test_every_key_round_trips_through_the_config_file(self, tmp_config, key) -> None:
+        from kiro_crew.config.loader import KiroCrewConfig
+
+        async with TestClient(TestServer(_make_app())) as c:
+            resp = await _patch(c, "dashboard.session_sort", key)
+            assert resp.status == 200, await resp.text()
+        stored = json.loads(tmp_config.read_text(encoding="utf-8"))
+        assert stored["dashboard"]["session_sort"] == key
+        assert KiroCrewConfig.load().dashboard.session_sort == key
+
+    @pytest.mark.asyncio
+    async def test_a_value_outside_the_key_list_is_refused_and_the_file_untouched(
+        self, tmp_config
+    ) -> None:
+        from kiro_crew.config.loader import KiroCrewConfig
+
+        async with TestClient(TestServer(_make_app())) as c:
+            assert (await _patch(c, "dashboard.session_sort", "name-asc")).status == 200
+            for bad in ("newest", "", "Name-Asc", "custom", 1, None, ["name-asc"]):
+                resp = await _patch(c, "dashboard.session_sort", bad)
+                assert resp.status == 400, bad
+        assert KiroCrewConfig.load().dashboard.session_sort == "name-asc"
+
+    def test_the_allowlist_enum_is_the_loader_list_spelled_once(self) -> None:
+        """The dataclass field's enum metadata, the shared constant and the PATCH
+        allowlist pinned equal, so a key cannot be writable without being
+        loadable or the other way round."""
+        from dataclasses import fields
+
+        from kiro_crew.config.sections import (
+            SESSION_SORT_DEFAULT,
+            SESSION_SORT_MODES,
+            DashboardConfig,
+        )
+        from kiro_crew.dashboard.handlers.core import _EDITABLE_CONFIG
+
+        spec = _EDITABLE_CONFIG["dashboard.session_sort"]
+        assert spec == {"type": "enum", "values": list(SESSION_SORT_MODES)}
+        field = next(f for f in fields(DashboardConfig) if f.name == "session_sort")
+        assert field.metadata["enum"] == list(SESSION_SORT_MODES)
+        assert field.default == SESSION_SORT_DEFAULT == "date-desc"
+
+
 # ── Auto-title refresh cadence (dashboard.title_refresh_every_turns) ─────
 
 
