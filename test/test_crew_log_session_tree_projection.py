@@ -1289,3 +1289,61 @@ def test_the_edge_recorder_raises_nothing_into_the_writer_job(monkeypatch, caplo
     if failure == "arguments":
         folded = [r for r in caplog.records if "could not apply an opened record" in r.getMessage()]
         assert len(folded) == 1, "the unreadable ids never reached the projection's guard"
+
+
+# --- slot_depth: the in-memory walk the depth field is resolved from ---
+
+
+def test_slot_depth_of_a_root_is_zero():
+    proj = stp.projection()
+    proj.ensure_seeded()
+    proj.apply(_rec("s-root", "slot-a"))
+    assert stp.slot_depth("slot-a") == 0
+
+
+def test_slot_depth_of_a_child_is_one():
+    proj = stp.projection()
+    proj.ensure_seeded()
+    proj.apply(_rec("s-root", "slot-a"))
+    proj.apply(_rec("s-child", "slot-b", created=2, parent="slot-a"))
+    assert stp.slot_depth("slot-b") == 1
+
+
+def test_slot_depth_counts_each_hop_up_the_chain():
+    # slot-a <- slot-b <- slot-c. The grandchild stands two creators below the root.
+    proj = stp.projection()
+    proj.ensure_seeded()
+    proj.apply(_rec("s-a", "slot-a"))
+    proj.apply(_rec("s-b", "slot-b", created=2, parent="slot-a"))
+    proj.apply(_rec("s-c", "slot-c", created=3, parent="slot-b"))
+    assert stp.slot_depth("slot-c") == 2
+
+
+def test_slot_depth_of_an_empty_slot_is_none():
+    proj = stp.projection()
+    proj.ensure_seeded()
+    assert stp.slot_depth("") is None
+
+
+def test_slot_depth_of_an_unknown_slot_is_none():
+    proj = stp.projection()
+    proj.ensure_seeded()
+    proj.apply(_rec("s-root", "slot-a"))
+    assert stp.slot_depth("slot-missing") is None
+
+
+def test_slot_depth_is_none_when_the_chain_ends_at_an_unplaced_citation():
+    # slot-b cites slot-ghost, which has no record of its own: the fold keeps the
+    # citation but cannot place it, so slot-b is a root of the folded tree while
+    # carrying a parent. Its true depth is unknown, not zero.
+    proj = stp.projection()
+    proj.ensure_seeded()
+    proj.apply(_rec("s-child", "slot-b", created=2, parent="slot-ghost"))
+    assert stp.slot_depth("slot-b") is None
+
+
+def test_slot_depth_is_none_before_the_projection_is_seeded():
+    # A fresh projection for another store cannot answer: an unseeded read must say
+    # "not established" rather than invent a root.
+    stp.reset_for_tests()
+    assert stp.slot_depth("slot-a") is None

@@ -270,6 +270,15 @@ SESSION_STARTED_METRIC: Final[str] = "kirocrew.crew.session.started"
 #: ``actor`` set (``ACTOR_VALUES``, mirrored above as :data:`_KNOWN_ACTORS`).
 TURN_STARTED_METRIC: Final[str] = "kirocrew.crew.turn.started"
 
+#: ``kirocrew.crew.session.tree.depth`` -- one HISTOGRAM observation per session whose
+#: ``session/opened`` recorded a depth: how many creators stood above it in the session
+#: tree. No attribute -- the signal is a distribution, not a breakdown. Bucket
+#: boundaries are the SDK default for this build; the right boundaries are TO BE
+#: MEASURED against a real install's observed depths once this ships, by reading the
+#: exported histogram's bucket occupancy and narrowing from there, the same posture
+#: :data:`EXPORT_LAG_METRIC` takes -- not guessed in advance of any data.
+SESSION_TREE_DEPTH_METRIC: Final[str] = "kirocrew.crew.session.tree.depth"
+
 
 def _otel_usage_diff(
     previous: "Mapping[str, Any] | None", current: Mapping[str, Any]
@@ -332,12 +341,53 @@ def _otel_usage_diff(
     return metrics
 
 
+def _otel_session_tree_diff(
+    previous: "Mapping[str, Any] | None", current: Mapping[str, Any]
+) -> "list[Metric]":
+    """The depth histogram observation owed on the first sight of a session new to this
+    process.
+
+    ``previous is None`` is that first sight (see :class:`UsageExporter`). The fold
+    renders ``opened_ts`` (the opening entry's timestamp) and ``depth``
+    (:mod:`kiro_crew.crew_log.projection_otel_session_tree`); this observes the depth
+    once, only when :func:`_opened_in_this_process` proves the session opened at or
+    after export install -- so a resumed session's depth is not re-observed on every
+    gateway restart, the same guard ``_otel_usage_diff`` applies to session.started.
+    A later delivery (``previous`` not ``None``) is not a first sight and observes
+    nothing. The depth is read back through the fold's own shape-and-sign guard, and a
+    session with no established depth (``depth`` is ``None``) contributes no
+    observation. No attribute: the metric is a distribution.
+    """
+    # One observation per session, on the FIRST sight (previous is None) of a session
+    # this process can prove is new -- its opened_ts is at or after export install. A
+    # resumed session's first sight has an older opened_ts, so its depth is not
+    # re-observed on every restart; a later delivery is not a first sight, so it cannot
+    # observe twice. This is the same restart guard _otel_usage_diff uses for
+    # session.started.
+    if previous is not None:
+        return []
+    if not _opened_in_this_process(current.get("opened_ts")):
+        return []
+    depth = current.get("depth")
+    if isinstance(depth, bool) or not isinstance(depth, int) or depth < 0:
+        return []
+    return [Metric(SESSION_TREE_DEPTH_METRIC, KIND_HISTOGRAM, depth, {})]
+
+
 #: Every usage fold this export subscribes to. ONE ROW PER FOLD -- a later story
-#: (S2's session tree, a later work-ledger story) adds its own session-keyed row here
-#: with its own ``diff``, and nothing else in this module changes:
-#: :func:`on_fold_advanced` dispatches by the event's fold name, so a new row is live
-#: the moment it is added. This is the file-plus-tuple a later story extends.
-_EXPORTERS: Final[tuple[UsageExporter, ...]] = (UsageExporter("otel_usage", _otel_usage_diff),)
+#: A new session-keyed usage fold adds its own row here with its own ``diff``, and
+#: nothing else in this module changes: :func:`on_fold_advanced` dispatches by the
+#: event's fold name, so a new row is live the moment it is added. ``otel_session_tree``
+#: is the session-tree depth histogram's source; the roots metric is NOT here because
+#: its source is the whole session tree, which no session-keyed ``FoldAdvanced`` carries
+#: -- it is an observable gauge read at collect time
+#: (:func:`kiro_crew.crew_log.otel_session_tree_roots.register_session_tree_gauge`,
+#: registered from :mod:`kiro_crew.metrics.provider` the same way the inventory and
+#: process gauges are).
+_EXPORTERS: Final[tuple[UsageExporter, ...]] = (
+    UsageExporter("otel_usage", _otel_usage_diff),
+    UsageExporter("otel_session_tree", _otel_session_tree_diff),
+)
 
 
 # --------------------------------------------------------------------------- #

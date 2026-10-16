@@ -233,6 +233,48 @@ def _crew_log_inherited_parent(slot: Any, head_sid: str) -> str:
     return inherited if inherited == restored else ""
 
 
+def _crew_log_tree_depth(slot: Any, parent_slot: str) -> "int | None":
+    """The ``depth`` this session's ``session/opened`` may state, or ``None``. No I/O.
+
+    How many creators stand above this session: ``0`` when nobody created it, and the
+    creator's own depth plus one when one did. *parent_slot* is the creator this entry
+    is about to cite, already resolved by the two functions above, so this reads the
+    SAME edge the entry records rather than a second opinion on it.
+
+    ``None`` is "not established", and it is the answer in two states that look alike
+    from the entry and are not. A cited creator whose depth the tree cannot give --
+    unseeded, incomplete, a citation with no log, a cycle (see
+    :func:`~kiro_crew.crew_log.session_tree_projection.slot_depth`) -- is unknown. And
+    so is a slot that came back from a restart STATING a creator this process may not
+    cite: the creator exists, the entry carries no ``parent`` for the fence's sake
+    (see :func:`_crew_log_lineage`), and the honest depth is therefore unknown rather
+    than zero. Only a slot that states no creator at all is a root.
+
+    That distinction is the whole reason the caller resolves this instead of the
+    emitter inferring it from an empty ``parent_slot``: the two cases are one value
+    there, and the reader this feeds counts a tree per root.
+
+    Never raises. A depth that cannot be read costs one session its place in a
+    distribution, and nothing else.
+    """
+    if parent_slot:
+        try:
+            if not crew_log_emit.enabled():
+                return None
+            from kiro_crew.crew_log.session_tree_projection import slot_depth
+
+            above = slot_depth(parent_slot)
+        except Exception:
+            return None
+        return None if above is None else above + 1
+    if str(getattr(slot, "_created_by", "") or ""):
+        # A creator was restored and could not be promoted to a citation. Unknown, not
+        # a root: this session hangs under something, and the one number that must not
+        # be written here is the one that says it does not.
+        return None
+    return 0
+
+
 #: Slot attribute carrying a channel binding that committed BEFORE the session had a
 #: crew log to record it in. The recorder sets it in that case instead of dropping the
 #: fact, and :func:`_crew_log_class` folds it in, so the opening entry of a log created

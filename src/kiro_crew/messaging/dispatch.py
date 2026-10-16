@@ -878,8 +878,11 @@ def open_turn_crew_log(
     ``session/class`` move whenever two statements of one session's class differ:
     every member the dashboard states, this opener states from the same source, or
     the two writers would take turns recording a move that never happened. No
-    ``parent``: a
-    conversation the person opened themselves is nobody's child. ``previous_sid``
+    ``parent`` and ``depth`` zero: a
+    conversation the person opened themselves is nobody's child, and because this
+    writer owns the channel's own sessions it can say so as a fact rather than
+    leave the depth absent, which every other reading of an uncited creator has to
+    mean. ``previous_sid``
     is the crew log this conversation's live session superseded, as the
     allocation boundary captured it while registering that session
     (:func:`predecessor_sid`, consumed by the dispatcher right after
@@ -924,6 +927,14 @@ def open_turn_crew_log(
             model_requested=model_requested,
             cwd=str(getattr(provider, "cwd", "") or ""),
             resumed=bool(resumed),
+            # A root, stated rather than left absent. This path writes no
+            # ``parent`` because a conversation the person opened themselves is
+            # nobody's child, and that is a FACT here rather than a gap: the
+            # dispatcher owns the channel's own sessions, and no other writer can
+            # give one of them a creator. An absent depth would read as "not
+            # established" and leave every channel conversation out of the tree
+            # count it is actually the root of.
+            depth=0,
             memory=memory_mode,
             channel=True,
             workspace=workspace,
