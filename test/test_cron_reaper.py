@@ -32,6 +32,7 @@ from kiro_crew.process_identity import (
     process_survived_async,
 )
 from kiro_crew.session_lifecycle import TornDown, _TeardownScope
+from kiro_crew.testing.wait import async_wait_until, finished
 
 #: These tests fire cron jobs through the due-scan, which defers firings while
 #: the host's memory posture is critical (see ``ample_host_free_memory``).
@@ -1114,27 +1115,13 @@ def _assert_the_reset_completed(caplog: pytest.LogCaptureFixture, elapsed: float
 
 
 async def _settle(predicate: Callable[[], bool], what: str) -> None:
-    """Poll until ``predicate()`` holds; at the ceiling raise naming ``what`` and the time."""
-    loop = asyncio.get_running_loop()
-    started = loop.time()
-    while not predicate():
-        elapsed = loop.time() - started
-        if elapsed > _FENCE_SETTLE_CEILING_SECS:
-            raise AssertionError(f"{what} after {elapsed:.3f}s")
-        await asyncio.sleep(0.005)
+    """Poll until ``predicate()`` holds; failing by name on timeout."""
+    await async_wait_until(predicate, describe=lambda: what)
 
 
 async def _within_the_ceiling(aw: Any, what: str) -> Any:
-    """Await *aw* under ``_FENCE_SETTLE_CEILING_SECS``; past it raise naming ``what``."""
-    loop = asyncio.get_running_loop()
-    started = loop.time()
-    try:
-        return await asyncio.wait_for(aw, timeout=_FENCE_SETTLE_CEILING_SECS)
-    except asyncio.TimeoutError:
-        raise AssertionError(
-            f"{what}: not done after {loop.time() - started:.3f}s "
-            f"(lost-run ceiling {_FENCE_SETTLE_CEILING_SECS:.0f}s)"
-        ) from None
+    """Await *aw* under the lost-run bound; past it raise naming ``what``."""
+    return await finished(aw, what)
 
 
 def _parks_at_the_fence_door(mgr: Any) -> tuple[asyncio.Event, Any]:
@@ -1157,13 +1144,13 @@ async def _held_or_landed(parked: asyncio.Event, claim: asyncio.Task[Any]) -> st
     Returns rather than raises: the reset and history-append seams it runs in
     swallow exceptions, so the caller's own assertion names the outcome.
     """
-    loop = asyncio.get_running_loop()
-    started = loop.time()
-    while not parked.is_set() and not claim.done():
-        elapsed = loop.time() - started
-        if elapsed > _FENCE_SETTLE_CEILING_SECS:
-            return f"neither held nor landed after {elapsed:.3f}s"
-        await asyncio.sleep(0.005)
+    try:
+        await async_wait_until(
+            lambda: parked.is_set() or claim.done(),
+            describe=lambda: f"parked={parked.is_set()}, claim.done={claim.done()}",
+        )
+    except AssertionError as exc:
+        return f"neither held nor landed: {exc}"
     return "held" if parked.is_set() and not claim.done() else "landed before the record"
 
 
@@ -2016,10 +2003,10 @@ class TestReaperRecordsAFailedSigkill:
             # teardown runs on into the hang.
             run_teardown = asyncio.create_task(mgr.reset("cron:real1"))
             try:
-                for _ in range(400):
-                    if not mgr.has_session("cron:real1") and provider.shutdown.await_count:
-                        break
-                    await asyncio.sleep(0.005)
+                await async_wait_until(
+                    lambda: not mgr.has_session("cron:real1") and provider.shutdown.await_count,
+                    describe=lambda: f"session={mgr.has_session('cron:real1')}, shutdown_count={provider.shutdown.await_count}",
+                )
                 assert not mgr.has_session("cron:real1"), "the run's reset did not pop the session"
                 assert provider.shutdown.await_count == 1, "the teardown never reached the shutdown"
                 assert mgr.tearing_down("cron:real1") != []
@@ -2106,10 +2093,10 @@ class TestReaperRecordsAFailedSigkill:
             provider._client = client
             provider.shutdown = AsyncMock(side_effect=_hung_shutdown)
             teardown = asyncio.create_task(mgr.reset("cron:real2"))
-            for _ in range(400):
-                if not mgr.has_session("cron:real2") and provider.shutdown.await_count:
-                    break
-                await asyncio.sleep(0.005)
+            await async_wait_until(
+                lambda: not mgr.has_session("cron:real2") and provider.shutdown.await_count,
+                describe=lambda: f"session={mgr.has_session('cron:real2')}, shutdown_count={provider.shutdown.await_count}",
+            )
             assert not mgr.has_session("cron:real2"), "the reset did not pop the session"
             assert provider.shutdown.await_count == 1, "the teardown never reached the shutdown"
             return provider, teardown
@@ -3608,13 +3595,24 @@ class TestEveryKeyOfTheRunIsEnded:
         svc.register_active_session_key("par1", "cron:par1:agentB")
         _session_with_pid(svc, "cron:par1:agentB", 7051)
         older_started = asyncio.Event()
+        b_had_to_wait = False  # True: agentB found older_started unset (both parallel)
+        b_wait_completed = False  # True: agentB's wait() returned normally (agentA set it)
 
         async def _reset(session_key: str, **kwargs: Any) -> bool:
+            nonlocal b_had_to_wait, b_wait_completed
             if session_key == "cron:par1:agentA":
                 older_started.set()
             else:
-                # The newest key's reset outlasts the older key's start.
+                # In concurrent ending both resets run together: agentB starts before
+                # agentA sets the event (b_had_to_wait=True), then agentA sets it and
+                # agentB's wait() returns normally (b_wait_completed=True).
+                # In serial ending (newest-first) agentB starts while agentA has not yet
+                # begun, waits, but agentA never starts until agentB's reset times out;
+                # the reset is cancelled, CancelledError propagates, b_wait_completed
+                # stays False, and the assertion below catches the regression.
+                b_had_to_wait = not older_started.is_set()
                 await older_started.wait()
+                b_wait_completed = True
             session = svc._sessions._sessions.pop(session_key, None)
             scope = kwargs.get("scope")
             if session is not None and scope is not None:
@@ -3632,17 +3630,22 @@ class TestEveryKeyOfTheRunIsEnded:
             sweep,
             patch("kiro_crew.platform_compat.kill_process_group", return_value=True) as group_kill,
         ):
-            try:
-                await asyncio.wait_for(
-                    svc._force_reap("par1", _JOB_TIMEOUT_SECS + 60, claim=claim), timeout=5
-                )
-            except asyncio.TimeoutError:
-                pytest.fail(
-                    "the run's keys were ended one after another: the older key's reset never "
-                    "started while the newest key's was in flight, so the fences are up for the "
-                    "sum of every key's bound"
-                )
+            await finished(
+                svc._force_reap("par1", _JOB_TIMEOUT_SECS + 60, claim=claim),
+                "force_reap: the run's keys were ended one after another: the older key's reset never "
+                "started while the newest key's was in flight, so the fences are up for the "
+                "sum of every key's bound",
+            )
 
+        assert b_had_to_wait, (
+            "agentB did not enter its wait: keys are ended in start order "
+            "(older first) rather than newest-first concurrently"
+        )
+        assert b_wait_completed, (
+            "agentB's wait() was cancelled rather than completed: agentA did not start "
+            "while agentB was waiting, which means keys are ended serially "
+            "(agentB times out before agentA begins)"
+        )
         assert sorted(called.args[0] for called in group_kill.call_args_list) == [7050, 7051]
         assert _audited_outcome(mock_sel) == "reaped"
         audit = mock_sel().log_tool_invocation.call_args.kwargs
