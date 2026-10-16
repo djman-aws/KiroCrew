@@ -237,6 +237,8 @@ export function ChatPanel({ basePath }: { basePath?: string } = {}) {
     backgroundModelOpts, subagentModelOpts, fallbackOpts, refusalFallbackOpts, backgroundModelMut,
     subagentModelMut, shownBackgroundEffort, shownSubagentEffort, bgEffortSupported,
     subEffortSupported, effortLabels, backgroundEffortMut, subagentEffortMut,
+    memberEffortPinOverrides, showEffortPinNotice, resolvedEffortLabel, clearAgentEffortPinMut,
+    clearAgentEffortPinError,
   } = useChatPanelModelDefaults({
     qc, setPathSaveError, clearOwnPathError, overlay, dashCfg, mcCfg, optimisticConfigOpts,
     fallbackModel, shownFallbackModel, refusalFallbackModel, shownRefusalFallbackModel,
@@ -485,6 +487,47 @@ export function ChatPanel({ basePath }: { basePath?: string } = {}) {
             onChange={v => defaultEffortMut.mutate(v)}
             disabled={!mcQ.isSuccess || !effortSupported}
           />
+          {/* Same row as the model pin notice above, for the effort the default
+              agent starts at instead of this setting. */}
+          {showEffortPinNotice && pinAgent && (
+            <div
+              className="mt-1 mb-3 flex flex-wrap items-center gap-3 text-[13px] text-warn"
+              role="status"
+              data-testid="agent-effort-pin-notice"
+            >
+              <span className="min-w-0 flex-1 break-words">
+                <Trans
+                  i18nKey={memberEffortPinOverrides
+                    ? 'pages.settings.chatPanel.agent_effort_pin_overrides_default'
+                    : 'pages.settings.chatPanel.agent_role_effort_overrides_default'}
+                  components={{
+                    agent: <span className="font-mono">{pinAgentName}</span>,
+                    // A translated level name, not an id, so not monospace.
+                    effort: <span className="font-medium">{resolvedEffortLabel}</span>,
+                  }}
+                />
+              </span>
+              {memberEffortPinOverrides && (
+                <>
+                  <Btn
+                    type="button"
+                    className="shrink-0"
+                    onClick={() => clearAgentEffortPinMut.mutate()}
+                    disabled={clearAgentEffortPinMut.isPending || pinReadsInFlight || pinReadsFailed || defaultEffortMut.isPending}
+                  >
+                    {i18nT('pages.settings.chatPanel.clear_agent_effort_pin')}
+                  </Btn>
+                  {/* No hand-off, for the same drafts as the model clear above. */}
+                  <ErrorNotice
+                    variant="inline"
+                    className="basis-full"
+                    message={clearAgentEffortPinError}
+                    testId="agent-effort-pin-clear-error"
+                  />
+                </>
+              )}
+            </div>
+          )}
         </SettingsCard>
         </div>
 
