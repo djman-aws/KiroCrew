@@ -21,8 +21,7 @@
     .cb h1 { margin: 2px 0 0; font-size: 15px; font-weight: 650; color: var(--c-strong); overflow-wrap: anywhere; }
     .cb .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 2px; font-size: 11px; color: var(--c-mute); }
     .cb .band { border: 1px solid var(--c-warn); border-left-width: 4px; border-radius: 10px; padding: 8px 10px;
-      background: var(--warn-subtle, rgba(251, 191, 36, .12)); }
-    .cb .band.attention { animation: cb-glow 2.6s ease-in-out 3; }
+      background: var(--warn-subtle, rgba(251, 191, 36, .12)); animation: cb-glow 2.6s ease-in-out 3; }
     .cb .k { display: block; color: var(--c-warn); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
     .cb .v { margin: 3px 0 0; font-weight: 500; color: var(--c-strong); overflow-wrap: anywhere; }
     .cb .tag { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 600; text-transform: none; letter-spacing: 0;
@@ -49,7 +48,7 @@
     .cb .t { margin: 0; font-size: 13px; font-weight: 600; color: var(--c-strong); overflow-wrap: anywhere; }
     .cb .pill { flex: none; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; border-radius: 999px;
       padding: 1px 8px; font-size: 11px; font-weight: 600; color: var(--tone); border: 1px solid var(--tone); }
-    .cb .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tone); }
+    .cb .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tone); animation: cb-blink 1.1s ease-in-out 6; }
     .cb .sub { font-size: 11.5px; color: var(--c-mute); overflow-wrap: anywhere; }
     .cb .tone-ok { --tone: var(--c-ok); }
     .cb .tone-run { --tone: var(--c-info); }
@@ -65,6 +64,7 @@
     .cb .tone-other { --tone: var(--c-mute); }
     .cb .empty { margin: 0; color: var(--c-mute); font-size: 12px; }
     @keyframes cb-pop { from { opacity: 0; transform: translateY(6px) scale(.96); } to { opacity: 1; transform: none; } }
+    @keyframes cb-blink { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
     @keyframes cb-glow { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 4px var(--warn-subtle, rgba(251, 191, 36, .22)); } }
     /* Every animation above is decoration: with motion off the page reads the same. */
     @media (prefers-reduced-motion: reduce) {
@@ -244,8 +244,8 @@
         youSignature = signature;
         host.textContent = '';
         if (!said.length && !asking.length) { host.appendChild(el('p', 'calm', i18n('calm'))); return; }
-        // Glow only when this set of requests is first drawn or truly changes.
-        var band = el('div', 'band attention');
+        // Rebuilding this node means the request set changed, so its glow is new.
+        var band = el('div', 'band');
         var k = el('span', 'k', i18n('needs_you'));
         if (said.length && written('needs_you')) k.appendChild(el('span', 'tag', i18n('wrote')));
         band.appendChild(k);
@@ -310,7 +310,9 @@
           if (track) track.remove();
           return;
         }
+        var freshTrack = false;
         if (!track) {
+          freshTrack = true;
           track = el('div', 'track');
           track.setAttribute('role', 'progressbar');
           track.appendChild(el('div', 'fill'));
@@ -320,9 +322,16 @@
         track.setAttribute('aria-valuemin', '0');
         track.setAttribute('aria-valuemax', String(total));
         track.setAttribute('aria-valuenow', String(done));
-        // The fill stays mounted. A real progress change eases from its old width;
-        // an unchanged refill never jumps back to zero first.
-        track.querySelector('.fill').style.width = (done / total * 100).toFixed(2) + '%';
+        var fill = track.querySelector('.fill');
+        var pct = (done / total * 100).toFixed(2) + '%';
+        if (freshTrack) {
+          // Keep the useful first-paint ease. Reduced motion disables its transition.
+          requestAnimationFrame(function () { requestAnimationFrame(function () { fill.style.width = pct; }); });
+        } else {
+          // The fill stays mounted. A real progress change eases from its old width;
+          // an unchanged refill never jumps back to zero first.
+          fill.style.width = pct;
+        }
       }
 
       // The conductor's last panel_publish, from its OWN record. A page that shows
@@ -466,7 +475,10 @@
         drawMore();
       }
 
-      render();
+      // The frame bootstrap registered first and fills bound cells on this event.
+      // Draw after that fill, so formatting such as timestamps is not overwritten.
+      if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', render, { once: true });
+      else render();
       // The composed frame dispatches this after it applies a Dashboard refill.
       // Listening to every message redrew the page for unrelated frame traffic.
       window.addEventListener('kirocrew-dashboard', render);
