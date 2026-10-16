@@ -30,6 +30,7 @@ from kiro_crew.dashboard import session_control as sc
 from kiro_crew.dashboard import stop_retry
 from kiro_crew.dashboard.chat_utils import slot_history_key
 from kiro_crew.dashboard.handlers import session_control as handlers_sc
+from kiro_crew.testing.wait import await_until, wait_until
 from kiro_crew.validation import MAX_SHORT_STRING
 
 # The autouse fixture below replaces ``sc.session_control_enabled`` so every
@@ -3067,7 +3068,10 @@ def test_session_control_routes_are_strict_internal():
     """
     from aiohttp import web
 
-    from kiro_crew.dashboard.server import _STRICT_INTERNAL_API_PATHS, _register_mcp_routes
+    from kiro_crew.dashboard.server import (
+        _STRICT_INTERNAL_API_PATHS,
+        _register_mcp_routes,
+    )
 
     app = web.Application()
     _register_mcp_routes(app)
@@ -3186,7 +3190,10 @@ def test_create_refuses_unreadable_delegation_identity(private_dispatch, monkeyp
 
 @pytest.mark.parametrize("explicit", [False, True])
 def test_private_creator_keeps_its_memory(private_dispatch, explicit):
-    from kiro_crew.member_memory_auth import bind_private_session_store, read_private_session_store
+    from kiro_crew.member_memory_auth import (
+        bind_private_session_store,
+        read_private_session_store,
+    )
 
     state, caller, store = private_dispatch
     caller.agent = "writer"
@@ -3230,8 +3237,11 @@ def test_create_rechecks_caller_identity_after_delegation(
 
         monkeypatch.setattr(sc, "read_session_execution", check)
         with pytest.raises(sc.SessionControlError) as exc:
-            await asyncio.wait_for(
-                sc.create_session(state, caller_session_key=_key(caller), agent="writer"), 10
+            await await_until(
+                asyncio.ensure_future(
+                    sc.create_session(state, caller_session_key=_key(caller), agent="writer")
+                ),
+                what="create_session completed",
             )
         assert exc.value.code == "caller_memory_changed"
 
@@ -3284,7 +3294,11 @@ def test_private_worker_assignment_precedes_birth_history(private_dispatch, monk
 @pytest.mark.parametrize("explicit", [False, True])
 def test_created_template_keeps_namespace_after_member_discovery(tmp_path, monkeypatch, explicit):
 
-    from kiro_crew.config.loader import KiroCrewAgentConfig, KiroCrewConfig, resolve_agent_bindings
+    from kiro_crew.config.loader import (
+        KiroCrewAgentConfig,
+        KiroCrewConfig,
+        resolve_agent_bindings,
+    )
     from kiro_crew.member_memory_auth import read_private_session_store
     from kiro_crew.memory_stores import provision_member_memory
     from kiro_crew.session_agent_selection import resolve_session_agent_bindings
@@ -3333,7 +3347,10 @@ def test_failed_private_birth_retains_its_permanent_assignment(
     private_dispatch, monkeypatch, preexisting, started_turn
 ):
     from kiro_crew.dashboard.chat_runner import _require_session_memory_assignment
-    from kiro_crew.member_memory_auth import bind_private_session_store, read_private_session_store
+    from kiro_crew.member_memory_auth import (
+        bind_private_session_store,
+        read_private_session_store,
+    )
     from kiro_crew.memory_stores import UnknownMemoryStore
     from kiro_crew.session_agent_selection import session_agent_selection_kind
 
@@ -3403,7 +3420,7 @@ def test_cancelled_private_birth_drains_before_returning(private_dispatch, monke
             assert not task.done(), "cancellation must not abandon the history writer"
             release.set()
             with pytest.raises(asyncio.CancelledError):
-                await asyncio.wait_for(task, 5)
+                await await_until(task, what="create_session task finished")
             assert finished.is_set()
         finally:
             release.set()
@@ -3660,7 +3677,11 @@ def test_create_schema_bounds_the_folder_reference():
     the same contract `chat_folder_move_session.folder` carries. Over-length is
     refused at validation, before any resolution work.
     """
-    from kiro_crew.validation import SESSION_CREATE_SCHEMA, ValidationError, validate_tool_args
+    from kiro_crew.validation import (
+        SESSION_CREATE_SCHEMA,
+        ValidationError,
+        validate_tool_args,
+    )
 
     out = validate_tool_args({"folder": "aaaaaaaaaaaa"}, SESSION_CREATE_SCHEMA)
     assert out["folder"] == "aaaaaaaaaaaa", "an id-shaped reference must pass"
@@ -5500,7 +5521,6 @@ def test_the_audit_write_does_not_run_on_the_event_loop(tmp_path, monkeypatch):
     Mutation guard: calling `sel()` inline runs it on the calling thread.
     """
     import threading
-    import time
 
     state = _make_state(tmp_path)
     caller = _slot(state, "chat-1")
@@ -5519,11 +5539,8 @@ def test_the_audit_write_does_not_run_on_the_event_loop(tmp_path, monkeypatch):
 
     loop_thread = asyncio.run(_drive())
 
-    # The offload is fire-and-forget, so wait for it rather than racing it.
-    deadline = time.monotonic() + 5
-    while "thread" not in seen and time.monotonic() < deadline:
-        time.sleep(0.01)
-
+    # The offload is fire-and-forget; wait until the thread records itself.
+    wait_until(lambda: "thread" in seen)
     assert "thread" in seen, "the audit never ran"
     assert (
         seen["thread"] != loop_thread
@@ -5540,7 +5557,6 @@ def test_the_denial_audit_does_not_run_on_the_event_loop(tmp_path, monkeypatch):
     Mutation guard: calling `sel()` inline in `deny` runs it on the loop thread.
     """
     import threading
-    import time
 
     state = _make_state(tmp_path)
     caller = _slot(state, "chat-1")
@@ -5564,10 +5580,7 @@ def test_the_denial_audit_does_not_run_on_the_event_loop(tmp_path, monkeypatch):
 
     loop_thread = asyncio.run(_drive())
 
-    deadline = time.monotonic() + 5
-    while "thread" not in seen and time.monotonic() < deadline:
-        time.sleep(0.01)
-
+    wait_until(lambda: "thread" in seen)
     assert "thread" in seen, "the denial was never audited"
     assert (
         seen["thread"] != loop_thread
@@ -5589,7 +5602,6 @@ def test_the_denial_audit_does_not_persist_caller_supplied_credentials(tmp_path,
 
     Mutation guard: dropping either `redact` call in `deny` fails this.
     """
-    import time
 
     # Assembled rather than written literally: a real-looking token in source
     # trips secret scanners for no benefit. `redact_credentials` matches the
@@ -5617,10 +5629,7 @@ def test_the_denial_audit_does_not_persist_caller_supplied_credentials(tmp_path,
 
     asyncio.run(_drive())
 
-    deadline = time.monotonic() + 5
-    while "resources" not in captured and time.monotonic() < deadline:
-        time.sleep(0.01)
-
+    wait_until(lambda: "resources" in captured)
     assert "resources" in captured, "the denial was never audited"
     assert noisy_target not in captured["resources"], (
         "the raw target reached the audit's `resources`; /api/sel/events would "
