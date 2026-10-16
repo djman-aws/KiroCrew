@@ -847,11 +847,14 @@ def fold_summary(value: Any) -> str:
 def _read_page(slug: str) -> tuple[Any, TemplateManifest | None, str]:
     """The record a crewmate's tab shows, its parsed manifest, and the lock line.
 
-    The record is ``None`` when there is no page in force. The lock line is the
-    store's own refusal (``LOCKED_REFUSAL``) while the person's lock is set, else
-    ``""``; it is read off the stored record BEFORE any fallback, because the default
-    page carries no lock of its own, so it can be set while the page is ``None``.
-    TOTAL: a record that cannot be read is no page and no lock line.
+    The manifest is ``None`` when there is no page in force. The record is ``None``
+    then too, except for an UNADOPTED record with no default to show -- a crewmate with
+    no page named for it -- which comes back as the stored record: whether its tab
+    draws the suggestions page is :func:`shows_suggestions`'s question to answer. The
+    lock line is the store's own refusal (``LOCKED_REFUSAL``) while the person's lock
+    is set, else ``""``; it is read off the stored record BEFORE any fallback, because
+    the default page carries no lock of its own, so it can be set while there is no
+    page. TOTAL: a record that cannot be read is no page and no lock line.
     """
     try:
         from kiro_crew.dashboard_templates import instance as instance_store
@@ -862,7 +865,7 @@ def _read_page(slug: str) -> tuple[Any, TemplateManifest | None, str]:
         if record.state == instance_store.STATE_EMPTY:
             fallback = instance_store.default_instance(slug)
             if fallback is None:
-                return None, None, locked
+                return record, None, locked
             record = fallback
         elif record.state not in (instance_store.STATE_LIVE, instance_store.STATE_STALE):
             return None, None, locked
@@ -916,10 +919,11 @@ def shows_suggestions(slug: str, record: Any, *, package_slug: str) -> bool:
     THE decision, made once: the read route sends it to the website as
     ``suggestions`` and :func:`turn_block` tells the crewmate the same answer.
 
-    True only for the template instance (no package page is being served), an
-    UNADOPTED record (``state: empty``, the default filled in), and the GENERIC
-    default -- a shipped page named for the crewmate (``default_template_id``'s slug
-    pick, e.g. ``kirocrew-conductor``'s board) is drawn as before.
+    True only for the template instance (no package page is being served) and an
+    UNADOPTED record (``state: empty``) with no page named for the crewmate -- a
+    shipped page named for it (``default_template_id``'s slug pick, e.g.
+    ``kirocrew-conductor``'s board) is drawn as before. Such a crewmate has no page in
+    force at all, so its record is the stored one, with no template.
     """
     from kiro_crew.dashboard_templates import instance as instance_store
 
@@ -930,19 +934,8 @@ def shows_suggestions(slug: str, record: Any, *, package_slug: str) -> bool:
     return str(getattr(record, "template_id", "") or "") != slug
 
 
-def tab_shows_suggestions(slug: str) -> bool:
-    """:func:`shows_suggestions` for *slug* as it stands, for a reader that holds no
-    record of its own (the profile's upkeep view). TOTAL: unreadable is ``False``."""
-    record, manifest, locked_line = _read_page(slug)
-    if record is None or manifest is None:
-        return False
-    package_slug = "" if locked_line else bound_package(slug)
-    return shows_suggestions(slug, record, package_slug=package_slug)
-
-
 #: The block for a crewmate whose tab shows the suggestions page. No fields and no
-#: upkeep pointer: values written to the default would land on a page nobody sees, so
-#: offering them would spend every turn's tokens on upkeep no reader can look at.
+#: upkeep pointer: with no page in force there is nothing to write.
 SUGGESTIONS_LINE: str = (
     "Your Dashboard tab shows the suggestions page: no page is adopted yet, so there "
     "are no fields to keep up. Offer a page with dashboard_preview; the person applies it."
@@ -957,27 +950,25 @@ def turn_block(slug: str) -> str:
     ``dashboard_fields`` also tells it what each means and when and how to write it.
     The shapes, the mistake book and the upkeep text stay behind ``dashboard_fields``,
     because a block on every turn is paid for on every turn. Building the block also
-    syncs the page's helper scripts, so a crewmate on the default page, which never
-    commits, still has them.
+    syncs the page's helper scripts, so a crewmate on the page named for it, which
+    never commits, still has them.
     TOTAL: a dashboard that cannot be read costs the turn this block, nothing else.
     """
     record, manifest, locked_line = _read_page(slug)
     if record is None or manifest is None:
+        # No page in force. The read route's rule for which package is on screen: a
+        # lock keeps the template instance there, so a locked crewmate serves no
+        # package. The lock is read off the STORED record, which is what `locked_line`
+        # already is.
+        if record is not None:
+            package_slug = "" if locked_line else bound_package(slug)
+            if shows_suggestions(slug, record, package_slug=package_slug):
+                lock = f"\n{locked_line}" if locked_line else ""
+                return "[DASHBOARD]\n" + SUGGESTIONS_LINE + lock
         # The line is the store's own refusal, so the turn and the tool never disagree.
         return f"[DASHBOARD]\n{locked_line}" if locked_line else ""
     from kiro_crew import dashboard_upkeep  # the upkeep module reads this one
 
-    # The read route's rule for which package is on screen: a lock keeps the template
-    # instance there, so a locked crewmate serves no package. The lock is read off
-    # the STORED record (the default it fell back to carries none), which is what
-    # `locked_line` already is.
-    package_slug = "" if locked_line else bound_package(slug)
-    if shows_suggestions(slug, record, package_slug=package_slug):
-        # Still synced: `dashboard_fields` keeps answering for the default and names
-        # these helpers, so they must exist and be current even though the block
-        # offers no fields.
-        dashboard_upkeep.sync(slug, page=(record, manifest))
-        return "[DASHBOARD]\n" + SUGGESTIONS_LINE + (f"\n{locked_line}" if locked_line else "")
     names = sorted(agentic_fields(manifest))
     writes = ", ".join(names) if names else "none (every field is folded)"
     block = (
