@@ -71,7 +71,7 @@ _MEMBERS: dict[str, tuple[str, str | None, str]] = {
     "_claimed_item_ids": ("function", "c7985e186c11", "bundle_ownership"),
     "_close_all_for_tests": ("function", "f4ca892d9e9f", "store"),
     "_connect": ("function", "55cc4a2df3bc", "store"),
-    "_contested_claims": ("function", "f108c05d77f4", "bundle_ownership"),
+    "_contested_claims": ("function", "efe932043d33", "bundle_ownership"),
     "_delete_item_cascade": ("function", "c968aad76a4e", "item_rows"),
     "_ensure_search_indexes_if_empty": ("function", "b60c5fea256e", "schema_migrations"),
     "_ensure_vector_generation": ("function", "b60c5fea256e", "schema_migrations"),
