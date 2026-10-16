@@ -45,7 +45,7 @@ function item(over: Record<string, unknown> = {}) {
   }
 }
 
-function mount(fields: Record<string, unknown>, agentic: string[] = ['needs_you']) {
+function setState(fields: Record<string, unknown>, agentic: string[] = ['needs_you']) {
   ;(window as unknown as { kirocrew: unknown }).kirocrew = {
     fields,
     agentic,
@@ -54,20 +54,84 @@ function mount(fields: Record<string, unknown>, agentic: string[] = ['needs_you'
     missing: [],
     written_at: {},
   }
-  const { code, body } = halves()
-  document.body.replaceChildren(...Array.from(body.childNodes))
-  // The host's own fill: every bound element gets its value by textContent.
+}
+
+function publish(fields: Record<string, unknown>, agentic: string[] = ['needs_you']) {
+  setState(fields, agentic)
+  // The host fills bindings before telling the page that a refill landed.
   for (const node of Array.from(document.querySelectorAll('[data-dashboard-field]'))) {
     const value = fields[node.getAttribute('data-dashboard-field') ?? '']
     if (value !== undefined) node.textContent = typeof value === 'string' ? value : JSON.stringify(value)
   }
+}
+
+function mount(fields: Record<string, unknown>, agentic: string[] = ['needs_you']) {
+  setState(fields, agentic)
+  const { code, body } = halves()
+  document.body.replaceChildren(...Array.from(body.childNodes))
+  publish(fields, agentic)
   new Function(code)()
+}
+
+/** Refill the mounted document without running its script again. */
+function refill(fields: Record<string, unknown>, agentic: string[] = ['needs_you']) {
+  publish(fields, agentic)
+  window.dispatchEvent(new Event('kirocrew-dashboard'))
 }
 
 const text = (sel: string) => document.querySelector(sel)?.textContent ?? ''
 const all = (sel: string) => Array.from(document.querySelectorAll(sel))
 
 describe('kirocrew-conductor page', () => {
+  it('keeps stable nodes on refill and animates only new work', () => {
+    const fields = {
+      goal: 'ship the board',
+      needs_you: ['Approve the merge'],
+      items: [
+        item({ item_id: 'a', title: 'accepted one', state: 'accepted', status: 'done' }),
+        item({ item_id: 'b', title: 'running one' }),
+      ],
+    }
+    mount(fields)
+    const band = document.querySelector('#cb-you .band')
+    const fill = document.querySelector('#cb-meter .fill') as HTMLElement
+    const cards = all('#cb-tasks .card')
+    expect(band?.classList.contains('attention')).toBe(true)
+    expect(fill.style.width).toBe('50%')
+    expect(cards).toHaveLength(2)
+
+    // Only the update stamp moved. No animated subtree may be replaced.
+    const taskMutations: MutationRecord[] = []
+    const observer = new MutationObserver((records) => taskMutations.push(...records))
+    observer.observe(document.getElementById('cb-tasks') as HTMLElement, { childList: true, subtree: true })
+    refill({ ...fields, last_entry_at: '2026-10-16T16:00:00Z' })
+    taskMutations.push(...observer.takeRecords())
+    observer.disconnect()
+    expect(taskMutations).toEqual([])
+    expect(document.querySelector('#cb-you .band')).toBe(band)
+    expect(document.querySelector('#cb-meter .fill')).toBe(fill)
+    expect(all('#cb-tasks .card')).toEqual(cards)
+    expect(fill.style.width).toBe('50%')
+
+    // Real progress reuses the meter and old cards. Only the new task pops in.
+    refill({
+      ...fields,
+      items: [
+        item({ item_id: 'a', title: 'accepted one', state: 'accepted', status: 'done' }),
+        item({ item_id: 'b', title: 'running one', state: 'accepted', status: 'done' }),
+        item({ item_id: 'c', title: 'new work' }),
+      ],
+    })
+    expect(document.querySelector('#cb-meter .fill')).toBe(fill)
+    expect(fill.style.width).toBe('66.67%')
+    const after = all('#cb-tasks .card')
+    expect(after[0]).toBe(cards[0])
+    expect(after[1]).toBe(cards[1])
+    expect(after[1].classList.contains('pop')).toBe(false)
+    expect(after[2].classList.contains('pop')).toBe(true)
+    expect(RAW).not.toContain('cb-blink')
+  })
+
   it('draws one card per work item, with its state', () => {
     mount({
       goal: 'ship the board',
