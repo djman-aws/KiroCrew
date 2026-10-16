@@ -402,6 +402,27 @@ def keeps_older_package_rule(record: Instance) -> bool:
     return not record.package_slug and not record.package_released and not record.structure_locked
 
 
+#: The lock file :func:`package_save_lock` holds, beside the instance lock and apart
+#: from it: a save never writes the instance record, so it must not wait on one.
+_PACKAGE_SAVE_LOCK_FILE: Final[str] = ".package-save.lock"
+
+
+@contextmanager
+def package_save_lock(slug: str) -> Iterator[None]:
+    """Serialize one crewmate's package saves: the binding lookup and the write it decides.
+
+    ``dashboard_save`` looks up the package bound to the crewmate and then updates it,
+    or creates one when there is none. Two first saves at once would both find none and
+    create two packages with the same binding, and every later save and apply would then
+    fail as ambiguous until someone deleted one by hand. Held across the lookup and the
+    write, so the second save finds the first one's package and updates it.
+    """
+    if is_session_key(slug):
+        raise InstanceError("a session dashboard has no package to save")
+    with _locked(instance_dir(slug), lock_file=_PACKAGE_SAVE_LOCK_FILE):
+        yield
+
+
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
