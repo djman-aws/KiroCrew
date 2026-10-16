@@ -360,7 +360,10 @@ ACP_BACKENDS_INDEPENDENT_SETUP: FrozenSet[str] = frozenset(
 #: the array is the only channel CREW has onto the session's MCP surface (the harness
 #: mounts what its own user- and project-scope ``mcpServers`` and plugins declare
 #: beside it): an empty one means the harness works while every Crew tool is
-#: silently absent.
+#: silently absent. Unlike goose, deepseek and pi, claude's membership has no
+#: recorded round trip: the one claude capture
+#: (``test/fixtures/acp_frames/claude/session.jsonl``) is a single turn with no
+#: Crew MCP element on it.
 #:
 #: codex-acp is the second member, and it joins on the same terms rather than on
 #: an exact likeness to claude: it does load a config file of its OWN
@@ -937,6 +940,9 @@ def resolve_selected_backend(value: object) -> str:
 # so there is no second session to share.
 # pi is not a member: Crew spawns one ``pi-acp`` process per session over its own
 # stdio pipe, so there is no second session to share.
+# goose is not a member: it is not served by ``AcpRuntime`` (see
+# ``ACP_BACKENDS_ACP_RUNTIME``), so Crew opens one goose process per session and
+# there is no second session to share.
 #
 # deepseek is not a member, and here the limit is CREW's driver rather than the
 # harness. The harness multiplexes: one connection carries several independent
@@ -1255,6 +1261,11 @@ ACP_BACKENDS_MEMBER_PANEL = frozenset(
 # goose is not a member: its steer is its own request, and it is not shown to
 # carry a deny notice (see ``ACP_BACKENDS_STEERING_REQUEST``).
 #
+# KAS is a member on a SYNTHESIZED fixture, not a capture:
+# ``test/fixtures/acp_frames/kas/steering.jsonl`` (``recorded: synthesized``)
+# carries the ``steering_queued`` / ``steering_consumed`` frames, and no lane drives
+# a real KAS steer.
+#
 # This set answers the DENY-NOTICE question as well as the user one: a member's
 # steer can carry a refusal reason into the turn that was refused. A backend that
 # can take a USER's mid-turn message but not a deny notice belongs in
@@ -1360,6 +1371,11 @@ ACP_BACKENDS_STEERING_REQUEST = frozenset(
 # That makes membership here mean ``steer_needs_loss_recovery`` as well, like
 # codex.
 #
+# The live measurement is on 1.19.0, quoted here. The Real Adapter Contract lane
+# pins opencode 1.18.30 (``test/real_adapters/package.json``), and
+# ``test/test_opencode_concurrent_prompt_steer.py`` drives a scripted stdout, so no
+# lane re-measures this membership against a real opencode.
+#
 # Not ``ACP_BACKENDS_STEER``: a deny notice cannot ride this verb, because the
 # denial already ended the turn it was meant for.
 ACP_BACKENDS_STEER_CONCURRENT_PROMPT = frozenset({ACP_BACKEND_OPENCODE})
@@ -1436,6 +1452,17 @@ ACP_BACKENDS_STEER_CONCURRENT_PROMPT = frozenset({ACP_BACKEND_OPENCODE})
 # outcome arrives as a compaction status inside that turn. KAS stays in
 # :data:`ACP_BACKENDS_HARNESS_MANAGED_COMPACTION` too: membership here opens the
 # MANUAL command, and the threshold still leaves KAS to its own summarization.
+# Only the advertisement is committed (``test/fixtures/acp_frames/kas/session.jsonl``
+# names the verb); the drive above is quoted here, not committed, and no lane
+# re-runs it, so a kiro-cli release after 2.29.0 is not re-measured.
+#
+# kiro is a member on a SYNTHESIZED fixture, not a capture:
+# ``test/fixtures/acp_frames/kiro/notifications.jsonl`` (``recorded: synthesized``)
+# carries the ``_kiro.dev/compaction/status`` frames this membership relies on.
+#
+# claude is a member with no committed compaction capture: the one claude capture
+# (``test/fixtures/acp_frames/claude/session.jsonl``) is a single turn with no
+# ``/compact`` in it.
 #
 # deepseek is the one non-member:
 # :data:`ACP_BACKENDS_CONTEXT_RECYCLE` carries the consequence, because deepseek
@@ -1725,8 +1752,9 @@ ACP_BACKENDS_ACP_CLIENT_SPAWNABLE = frozenset(
 # (``reads_markdown_agent_specs``), never as "is KAS": a host added later that
 # reads markdown joins here and gets no markdown explanation. KAS is
 # a member because Crew reads the spec itself and hands it over the wire, so the
-# on-disk form is Crew's to parse; codex-acp, opencode and pi are not members
-# because none of them reads ``~/.kiro/agents`` at all.
+# on-disk form is Crew's to parse; codex-acp, opencode, pi, claude-agent-acp,
+# goose and deepseek are not members because none of them reads
+# ``~/.kiro/agents`` at all (``ACP_BACKENDS_SESSION_MCP_ARRAY``).
 ACP_BACKENDS_MARKDOWN_AGENT_SPECS = frozenset({ACP_BACKEND_KAS})
 
 # Backends whose agent's MCP SERVERS come from the USER-LEVEL spec alone, so a
@@ -2501,6 +2529,8 @@ ACP_BACKENDS_CLIENT_META_SETTINGS = frozenset({ACP_BACKEND_KAS})
 # pi is not a member: same reason, and its session has no Crew MCP set at all.
 # deepseek is not a member: its MCP servers arrive as a ``session/new`` array, so its
 # running set is described by the request that made the session and by no file.
+# goose is not a member, on the same reason: its Crew MCP set is the ``session/new``
+# array, so no file on disk describes a running session's set.
 ACP_BACKENDS_MCP_CONFIG_HOT_RELOAD = frozenset({ACP_BACKEND_KIRO})
 
 # Backends on which a Side Chat turn may EXECUTE read-only tools under
@@ -2521,7 +2551,9 @@ ACP_BACKENDS_MCP_CONFIG_HOT_RELOAD = frozenset({ACP_BACKEND_KIRO})
 #   sensitive paths, then pinned to ``default`` mode
 #   (``AcpClient._claude_session_meta``, ``_pin_claude_starting_mode``). No write
 #   tool exists there for an allow rule to pre-approve, and no allow rule reaches
-#   a sensitive path.
+#   a sensitive path. This membership rests on that construction alone: no side
+#   session capture is committed for claude, and claude's routing
+#   (``Routing.SEEDED_SETTINGS``) is declared but not enforced by this core.
 # * goose: its pre-approval store is ``permission.yaml`` in its config directory,
 #   which in ``approve`` mode runs a ``user.always_allow`` tool without asking.
 #   The side session is started with a goose home of its own under its scratch
@@ -2553,6 +2585,12 @@ ACP_BACKENDS_MCP_CONFIG_HOT_RELOAD = frozenset({ACP_BACKEND_KIRO})
 # read under its kiro-cli policy name (``read_file``/``list_directory`` ->
 # ``fs_read``, ``grep_search`` -> ``grep``, ``file_search`` -> ``glob``), so a
 # read-only one is approved and anything else is refused.
+# That capture is quoted here, not committed: no fixture carries it and no lane
+# re-runs it, so a kiro-cli release after 2.29.0 is not re-measured.
+#
+# codex is NOT a member. No side session on it is measured here to raise a
+# permission request for every call it does not run as a read, so a side turn on
+# it runs ``REJECT_ALL``.
 #
 # opencode is NOT a member. Its tool calls do reach ``session/request_permission``
 # (captured live), but that is by way of its own ``permission`` setting, not the
@@ -2766,6 +2804,9 @@ ACP_BACKENDS_CREW_FIRES_SPEC_HOOKS = frozenset(
 # H13 keeps it free of conditionals added in service of an adapter -- a harness
 # added later is one member here, not one more ``elif`` there.
 #
+# codex's restore is asserted only by an opt-in credentialled test, never in CI;
+# see ``ACP_BACKENDS_SESSION_SHARING``.
+#
 # pi is a member: pi-acp advertises ``loadSession`` and resolves a ``session/load``
 # from the id alone through its own session map, replaying the conversation as
 # ``user_message_chunk`` / ``agent_message_chunk`` updates before answering
@@ -2937,6 +2978,9 @@ class Routing(str, Enum):
 ACP_BACKEND_ROUTING: dict = {
     ACP_BACKEND_KIRO: Routing.AGENT_SPEC,
     ACP_BACKEND_KAS: Routing.AGENT_SPEC,
+    # Declared, not enforced: nothing reads back whether the seeded settings took
+    # effect, and ``SEEDED_SETTINGS`` is outside ``tool_gate.ENFORCED_ROUTINGS``, so
+    # a claude session is not refused for it.
     ACP_BACKEND_CLAUDE: Routing.SEEDED_SETTINGS,
     ACP_BACKEND_CODEX: Routing.SESSION_CONFIG,
     ACP_BACKEND_OPENCODE: Routing.VERIFIED_SEEDED_SETTINGS,
