@@ -5,6 +5,8 @@ import ErrorNotice from './ErrorNotice'
 import { PanelSectionHeader } from './ui'
 import CrewAvatar from './CrewAvatar'
 import { crewDisplayName } from './AgentSelector'
+import { MarkdownOnlyBadge } from './MarkdownOnlyBadge'
+import type { MarkdownBlock } from '../lib/markdownAgents'
 import { Star, Check, Users } from 'lucide-react'
 
 import { i18nT } from '../i18n/t'
@@ -26,6 +28,9 @@ export interface AgentItem {
   /** A member row's label, when its owner set one; the row shows it in place
    *  of the name. */
   display_name?: string
+  /** Set by `useAgents` when this markdown-only agent cannot run on the
+   *  harness this chat uses; the row wears the "KAS only" pill. */
+  markdown_block?: MarkdownBlock
 }
 
 /** Row identity for React keys and the active match: JSON so no separator a
@@ -82,6 +87,7 @@ function AgentButton({ a, active, isDefault, showSource, activeRef, onSelect, fi
         ) : showSource ? (
           <SourceBadge source={a.source}>{highlight(a.source)}</SourceBadge>
         ) : null}
+        <MarkdownOnlyBadge block={a.markdown_block} />
         {active && (
           <span className="text-accent text-[12px]" title={i18nT('components.agentDropdownList.active_in_this_session')}>
             <Check className="lucide-inline" />

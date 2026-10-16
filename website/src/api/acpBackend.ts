@@ -74,6 +74,11 @@ export function acpBackendName(backend: { id: string; policy_id?: string }): str
   }
 }
 
+/** A harness name short enough for a row badge; the full label elsewhere. */
+export function acpBackendShortName(id: string): string {
+  return id === ACP_BACKEND_KAS ? 'KAS' : acpBackendName({ id })
+}
+
 /**
  * The parsed body of a 503 `setup_marker_write_failed`, or `null` for any other
  * error. Both the first-run gate and Settings → Agent Harness read it, so it
