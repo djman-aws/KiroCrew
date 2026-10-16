@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import shlex
 import time
 from pathlib import Path
@@ -125,11 +126,18 @@ def reap_groups(tmp_path):
     for pgid in groups:
         with contextlib.suppress(Exception):
             platform_compat.kill_process_group(pgid, platform_compat.SIGKILL)
+
     # Bounded wait for every group to empty, so nothing outlives the test. A
     # leader the test's (closed) event loop never reaped is a zombie child of
     # this process, which still counts as a member, so reap it here.
+    def _reap_and_check():
+        for pgid in groups:
+            with contextlib.suppress(ChildProcessError, OSError):
+                os.waitpid(pgid, os.WNOHANG)
+        return not any(platform_compat.pgroup_exists(pgid) for pgid in groups)
+
     wait_until(
-        lambda: not any(platform_compat.pgroup_exists(pgid) for pgid in groups),
+        _reap_and_check,
         timeout=10,
         describe=lambda: "a test process group outlived teardown",
     )
@@ -139,7 +147,7 @@ async def _cancel_and_settle(task: asyncio.Task) -> None:
     task.cancel()
 
     with pytest.raises(asyncio.CancelledError):
-        await finished(task, "cancel settle")
+        await finished(task, "cancel settle", timeout=15)
 
 
 class TestTerminateAndReapSync:
@@ -264,7 +272,7 @@ class TestTerminateAndReap:
         await finished(
             platform_compat.terminate_and_reap(proc, grace=grace, reap_timeout=5),
             "terminate_and_reap",
-            timeout=30,
+            timeout=15,
         )
         elapsed = time.monotonic() - started
 
@@ -289,7 +297,7 @@ class TestTerminateAndReap:
         await finished(
             platform_compat.terminate_and_reap(proc, grace=10, reap_timeout=5),
             "terminate_and_reap",
-            timeout=30,
+            timeout=15,
         )
 
         # The trap ran to completion, which a SIGKILL would have prevented.
@@ -308,7 +316,7 @@ class TestTerminateAndReap:
         await finished(
             platform_compat.terminate_and_reap(proc, grace=10, reap_timeout=5),
             "terminate_and_reap",
-            timeout=30,
+            timeout=20,
         )
 
         _assert_restored(case)
@@ -339,7 +347,7 @@ class TestTerminateAndReap:
         proc.communicate = AsyncMock(return_value=(b"", b""))
 
         await finished(
-            platform_compat.terminate_and_reap(proc, grace=0.1), "terminate_and_reap", timeout=30
+            platform_compat.terminate_and_reap(proc, grace=0.1), "terminate_and_reap", timeout=10
         )
 
         proc.kill.assert_called_once()

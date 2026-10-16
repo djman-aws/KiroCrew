@@ -357,8 +357,7 @@ class TestCheckpoint:
                 # Reaches a checkpoint each iteration; raises once cancel lands.
                 h.checkpoint()
                 ran_on.append(1)
-                if h.cancelled.wait(timeout=0.01):
-                    return
+                h.cancelled.wait()  # block until cancel; checkpoint above raises on it
 
         sdk.register("stoppable", runner, cancellable=True)
         run_id = sdk.start("stoppable")
@@ -1184,7 +1183,7 @@ class TestDisableTrace:
             worker.append(threading.current_thread())
             started.set()
             while not (h.cancelled.is_set() or release.is_set()):
-                h.cancelled.wait(timeout=1.0)
+                h.cancelled.wait(timeout=5.0)  # re-check release every 5 s
 
         sdk.register("work", runner, cancellable=True)
         run_id = sdk.start("work")
@@ -4061,7 +4060,7 @@ class TestCleanupDoesNotBlockTheLoop:
             async def ticker() -> None:
                 nonlocal ticks
                 while True:
-                    await asyncio.sleep(0)  # yield to loop; count turns, not time
+                    await asyncio.sleep(0.02)  # flake-ok: measures free-loop time per tick
                     ticks += 1
 
             spin = asyncio.ensure_future(ticker())
