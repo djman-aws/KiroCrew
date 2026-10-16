@@ -68,6 +68,47 @@ def _rollup_ci(buckets: list[str]) -> str | None:
     return "passed"
 
 
+# Chip-status key set when a FAILED rollup still has checks in flight. ``ci``
+# alone cannot say it: failure wins the rollup, so "one check failed, the rest
+# are still running" and "every check finished, one failed" both read
+# ``failed``, and the chip had no way to show that CI is still moving. The
+# value is the string ``"1"`` because the chip cache is ``dict[str, str]``;
+# the key is absent otherwise, never ``"0"``.
+CI_PENDING_KEY = "ciPending"
+
+# The CI fields a degraded read carries forward together: a kept ``ci`` with
+# a dropped ``ciPending`` would silently claim the run had finished.
+CI_STATUS_FIELDS = ("ci", CI_PENDING_KEY)
+
+
+def _check_in_flight(check: dict[str, Any]) -> bool:
+    """Whether one check row is still running.
+
+    A GitLab required manual job is bucketed ``pending`` with status ``MANUAL``:
+    it waits on a person, so it is never in flight. The frontend's
+    ``checkInFlight`` applies the same rule.
+    """
+    return (
+        str(check.get("bucket") or "") == "pending"
+        and str(check.get("status") or "").upper() != "MANUAL"
+    )
+
+
+def _record_ci(result: dict[str, str], checks: list[dict[str, Any]]) -> None:
+    """Write the rolled-up CI fields for the check rows *checks* into a chip entry.
+
+    The single writer of ``ci`` + ``ciPending`` from per-check rows, so the chip
+    read and the full-payload write-through cannot disagree about either. ``ci``
+    rolls up the buckets; ``ciPending`` needs a check actually in flight.
+    """
+    ci = _rollup_ci([str(check.get("bucket") or "") for check in checks])
+    if ci is None:
+        return
+    result["ci"] = ci
+    if ci == "failed" and any(_check_in_flight(check) for check in checks):
+        result[CI_PENDING_KEY] = "1"
+
+
 def _project_state(raw_state: str, *, draft: bool) -> str | None:
     """Map a provider PR/MR lifecycle state to the chip ``state`` vocabulary.
 

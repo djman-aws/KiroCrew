@@ -42,6 +42,9 @@ export function parseStatusDelta(data: unknown): SourceStatusDelta | null {
   }
   const ci = record.ci
   if (ci === 'running' || ci === 'passed' || ci === 'failed') delta.ci = ci
+  // Only meaningful beside a failed rollup; a stray marker on any other value
+  // would claim CI is still moving when the delta says it is not.
+  if (delta.ci === 'failed' && record.ciPending === '1') delta.ciPending = '1'
   const mergeable = mergeStateValue(record.mergeable)
   if (mergeable) delta.mergeable = mergeable
   const mergeStateStatus = mergeStateValue(record.mergeStateStatus)
@@ -72,6 +75,7 @@ export function applyStatusDelta(
   const next: PullRequestStatus = {}
   if (delta.state) next.state = delta.state
   if (delta.ci) next.ci = delta.ci
+  if (delta.ciPending) next.ciPending = delta.ciPending
   if (delta.mergeable) next.mergeable = delta.mergeable
   if (delta.mergeStateStatus) next.mergeStateStatus = delta.mergeStateStatus
   const current = batch.statuses?.[delta.url]
@@ -79,6 +83,7 @@ export function applyStatusDelta(
     current
     && current.state === next.state
     && current.ci === next.ci
+    && current.ciPending === next.ciPending
     && current.mergeable === next.mergeable
     && current.mergeStateStatus === next.mergeStateStatus
   ) return batch

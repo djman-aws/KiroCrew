@@ -3341,10 +3341,10 @@ def test_status_from_full_payload_projects_lifecycle_and_ci() -> None:
     assert source.status_from_full_payload(
         {"state": "OPEN", "draft": True, "checks": [{"bucket": "pending"}, {"bucket": "passed"}]}
     ) == {"ci": "running", "state": "draft"}
-    # Any failure dominates the rollup.
+    # Any failure dominates the rollup; checks still in flight are marked.
     assert source.status_from_full_payload(
         {"state": "MERGED", "checks": [{"bucket": "failed"}, {"bucket": "pending"}]}
-    ) == {"ci": "failed", "state": "merged"}
+    ) == {"ci": "failed", "ciPending": "1", "state": "merged"}
     # GitLab spellings.
     assert source.status_from_full_payload({"state": "opened", "checks": []}) == {"state": "open"}
     # `locked` is GitLab's transient mid-merge state — no terminal lifecycle, so

@@ -8325,7 +8325,12 @@
       "this_authorizes_the_merge_as_soon_as_requirement": "Ceci autorise la fusion dès que les exigences sont satisfaites, avec un squash si ce dépôt l’autorise (sinon un commit de fusion, puis un rebase).",
       "this_authorizes_the_merge_when_the_pipeline_succ": "Ceci autorise la fusion lorsque le pipeline réussit.",
       "untitled_commit": "Commit sans titre",
-      "updated": "Mise à jour"
+      "updated": "Mise à jour",
+      "checks_failed_others_still_running": "Vérifications en échec ; d'autres sont encore en cours",
+      "checks_count_running_failed": "En cours : {{running}} · En échec : {{failed}}",
+      "waiting_on_checks": "En attente des vérifications",
+      "waiting_on_checks_detail": "Vérifications toujours en cours : {{running}} sur {{total}}. La fusion se débloque une fois les vérifications requises réussies et les relectures requises approuvées.",
+      "checks_failed_still_running_detail": "Sur {{total}} vérifications : en échec {{failed}}, encore en cours {{running}}. La fusion reste bloquée tant que les vérifications requises n'ont pas réussi."
     },
     "questionCard": {
       "custom_answer": "Réponse personnalisée",

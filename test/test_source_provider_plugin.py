@@ -239,6 +239,28 @@ async def test_chip_status_projects_only_ci_and_state(plugin) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("reply", "expected"),
+    [
+        # The full-payload write-through projects the marker from the plugin's
+        # own checks, so the chip read must keep it or every refresh disagrees.
+        ({"ci": "failed", "ciPending": "1"}, {"ci": "failed", "ciPending": "1"}),
+        # Beside any other rollup, or as any other value, it means nothing.
+        ({"ci": "passed", "ciPending": "1"}, {"ci": "passed"}),
+        ({"ci": "failed", "ciPending": "yes"}, {"ci": "failed"}),
+    ],
+)
+async def test_chip_status_keeps_the_still_running_marker_only_beside_a_failure(
+    plugin, monkeypatch, reply, expected
+) -> None:
+    async def fetch_check_status(_ref):
+        return reply
+
+    monkeypatch.setattr(plugin, "fetch_check_status", fetch_check_status)
+    assert await source._fetch_check_status(CR_URL) == expected
+
+
+@pytest.mark.asyncio
 async def test_plugin_error_text_is_redacted_before_it_reaches_the_client(plugin) -> None:
     """A plugin's EXCEPTION goes through the scrubber its payload goes through.
 

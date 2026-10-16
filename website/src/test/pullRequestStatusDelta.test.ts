@@ -114,3 +114,22 @@ describe('applyStatusDelta', () => {
     })).toBe(conflicting)
   })
 })
+
+describe('ciPending — a failed rollup with checks still in flight', () => {
+  it('keeps the marker only beside a failed rollup', () => {
+    expect(parseStatusDelta({ url: URL_A, ci: 'failed', ciPending: '1' }))
+      .toEqual({ url: URL_A, ci: 'failed', ciPending: '1' })
+    // Beside any other rollup, or with a non-canonical value, it would claim
+    // CI is still moving when the delta says otherwise.
+    expect(parseStatusDelta({ url: URL_A, ci: 'passed', ciPending: '1' })).toEqual({ url: URL_A, ci: 'passed' })
+    expect(parseStatusDelta({ url: URL_A, ci: 'failed', ciPending: true })).toEqual({ url: URL_A, ci: 'failed' })
+  })
+
+  it('re-renders when the run finishes but the rollup stays failed', () => {
+    const base: PullRequestStatusBatch = { statuses: { [URL_A]: { state: 'open', ci: 'failed', ciPending: '1' } } }
+    const finished = applyStatusDelta(base, { url: URL_A, state: 'open', ci: 'failed' })
+
+    expect(finished).not.toBe(base)
+    expect(finished?.statuses[URL_A]).toEqual({ state: 'open', ci: 'failed' })
+  })
+})

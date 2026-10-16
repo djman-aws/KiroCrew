@@ -220,6 +220,29 @@ export function pullRequestMergeBlocker(source: PullRequestSource): PullRequestM
     }
   }
   if (source.mergeStateStatus === 'blocked') {
+    // GitHub reports `blocked` while required checks are still running, which
+    // the generic branch-protection copy cannot distinguish from a missing
+    // approval. Name the running checks when there are any, and lead with the
+    // failure when one has already failed, so a red check is never hidden
+    // behind "waiting". A GitLab required manual job never counts as running
+    // (see `checkInFlight`), so it leaves the generic copy in place.
+    const checks = source.checks || []
+    const running = checks.filter(checkInFlight).length
+    const failed = checks.filter(check => check.bucket === 'failed').length
+    if (running > 0 && failed > 0) {
+      return {
+        tone: 'danger',
+        title: i18nT('components.pullRequestPanel.checks_failed'),
+        detail: i18nT('components.pullRequestPanel.checks_failed_still_running_detail', { failed, running, total: checks.length }),
+      }
+    }
+    if (running > 0) {
+      return {
+        tone: 'warn',
+        title: i18nT('components.pullRequestPanel.waiting_on_checks'),
+        detail: i18nT('components.pullRequestPanel.waiting_on_checks_detail', { running, total: checks.length }),
+      }
+    }
     return {
       tone: 'warn',
       title: i18nT('components.pullRequestPanel.merge_blocked'),
@@ -278,6 +301,23 @@ export function pullRequestCiSignal(
   return 'passed'
 }
 
+/** Whether one check is still running: bucketed `pending` and not a manual
+ * gate. A GitLab required manual job is bucketed `pending` with status
+ * `MANUAL`; it waits on a person, so it is never "running". The backend's
+ * `ciPending` marker applies the same rule (`projection._check_in_flight`). */
+export function checkInFlight(check: PullRequestCheck): boolean {
+  return check.bucket === 'pending' && (check.status || '').toUpperCase() !== 'MANUAL'
+}
+
+/** Whether a FAILED rollup still has checks in flight — the `ciPending`
+ * marker the backend projects beside `ci`. Failure wins `pullRequestCiSignal`,
+ * so without this "one failed, the rest still running" and "all done, one
+ * failed" render identically. */
+export function pullRequestCiStillRunning(checks: PullRequestCheck[] | undefined): boolean {
+  return pullRequestCiSignal(checks) === 'failed'
+    && !!checks?.some(checkInFlight)
+}
+
 /** A merge field the provider actually answered, or undefined.
  *
  * Both `''` and `'unknown'` are non-answers rather than values (see
@@ -324,10 +364,18 @@ export function selectedSourceStatus(
   const keptCi = source.partialSections?.includes('checks') ? cached?.ci : undefined
   const state = pullRequestLifecycleState(source)
   const terminal = state === 'merged' || state === 'closed'
+  const liveCi = pullRequestCiSignal(source.checks)
+  const ci = liveCi ?? keptCi
+  // From the same source as `ci`: the loaded checks when they rolled up, else
+  // the chip entry the degraded payload fell back to.
+  const ciPending = liveCi
+    ? pullRequestCiStillRunning(source.checks)
+    : keptCi === 'failed' && cached?.ciPending === '1'
   return {
     ...cached,
     state,
-    ci: pullRequestCiSignal(source.checks) ?? keptCi,
+    ci,
+    ciPending: ciPending ? '1' : undefined,
     mergeable: terminal
       ? undefined
       : (settledMergeField(source.mergeable) ?? settledMergeField(cached?.mergeable)),
@@ -421,7 +469,12 @@ function SourceTabState({ status }: { status: PullRequestStatus | undefined }) {
   // through a looked-up object is a shape `scripts/check-i18n-keys.mjs` cannot
   // resolve, which would exempt these sites from every catalog check.
   const lifeLabel = lifecycle ? i18nT(LIFECYCLE_LABEL_KEY[lifecycle]) : ''
-  const checkLabel = shownCi ? i18nT(CI_LABEL_KEY[shownCi]) : ''
+  // Failure wins the rollup, so a failed glyph alone hides checks that are
+  // still in flight; the pending spinner rides beside it and the label says both.
+  const stillRunning = shownCi === 'failed' && status?.ciPending === '1'
+  const checkLabel = stillRunning
+    ? i18nT('components.pullRequestPanel.checks_failed_others_still_running')
+    : shownCi ? i18nT(CI_LABEL_KEY[shownCi]) : ''
   const conflictLabel = showConflict ? i18nT('components.pullRequestPanel.merge_conflicts') : ''
   return (
     <>
@@ -436,8 +489,11 @@ function SourceTabState({ status }: { status: PullRequestStatus | undefined }) {
         </span>
       )}
       {CheckIcon && check && (
-        <span className={`inline-flex shrink-0 ${check.tone}`} aria-label={checkLabel} title={checkLabel}>
+        <span className={`inline-flex shrink-0 items-center gap-0.5 ${check.tone}`} aria-label={checkLabel} title={checkLabel}>
           <CheckIcon className={`lucide-inline ${check.spin ? 'animate-spin' : ''}`} aria-hidden="true" />
+          {stillRunning && (
+            <Loader className={`lucide-inline ${CI_META.running.tone} animate-spin`} aria-hidden="true" data-testid="source-tab-ci-still-running" />
+          )}
         </span>
       )}
     </>
@@ -1057,11 +1113,16 @@ export default function PullRequestPanel({
       complete: checks.filter(check => check.bucket === 'passed' || check.bucket === 'skipped').length,
       failed: checks.filter(check => check.bucket === 'failed').length,
       pending: checks.filter(check => check.bucket === 'pending').length,
+      running: checks.filter(checkInFlight).length,
       total: checks.length,
     }
   }, [source?.checks])
   const checksUnavailable = checksPollingPaused
   const checksRunning = checkCounts.pending > 0 && !checksUnavailable
+  // A `complete/total` fraction counts a failed check as not complete, so it
+  // cannot say whether the rest are still running or one has failed; once a
+  // check has failed while others run, the tab counts both instead.
+  const checksFailedStillRunning = checksRunning && checkCounts.failed > 0 && checkCounts.running > 0
   const allChecksPassed = checkCounts.total > 0
     && checkCounts.failed === 0
     && checkCounts.pending === 0
@@ -1080,7 +1141,7 @@ export default function PullRequestPanel({
     return merged
   }, [statusQuery.data, source])
 
-  const allTabs: Array<{ id: SourceTab; label: string; count?: number; tone?: string }> = source ? [
+  const allTabs: Array<{ id: SourceTab; label: string; count?: number; countText?: string; tone?: string }> = source ? [
     { id: 'changes', label: i18nT('components.pullRequestPanel.changes'), count: source.files.length },
     { id: 'description', label: i18nT('components.pullRequestPanel.description') },
     { id: 'commits', label: i18nT('components.pullRequestPanel.commits'), count: source.commits.length },
@@ -1088,12 +1149,19 @@ export default function PullRequestPanel({
       id: 'checks',
       label: checksUnavailable
         ? i18nT('components.pullRequestPanel.checks_unavailable')
-        : checksRunning
-          ? i18nT('components.pullRequestPanel.checks_running')
-          : showAllChecksPassed
-            ? i18nT('components.pullRequestPanel.all_checks_passed')
-            : i18nT('components.pullRequestPanel.checks'),
+        : checksFailedStillRunning
+          ? i18nT('components.pullRequestPanel.checks')
+          : checksRunning
+            ? i18nT('components.pullRequestPanel.checks_running')
+            : showAllChecksPassed
+              ? i18nT('components.pullRequestPanel.all_checks_passed')
+              : i18nT('components.pullRequestPanel.checks'),
       count: checkCounts.total,
+      countText: checksFailedStillRunning
+        ? i18nT('components.pullRequestPanel.checks_count_running_failed', { running: checkCounts.running, failed: checkCounts.failed })
+        : checkCounts.total
+          ? `${checkCounts.complete}/${checkCounts.total}`
+          : undefined,
       tone: checkCounts.failed
         ? 'text-danger'
         : checksUnavailable || checksRunning
@@ -1293,7 +1361,9 @@ export default function PullRequestPanel({
                   <Check className="lucide-inline text-ok" />
                 ) : null}
                 {item.label}
-                {item.count !== undefined && <span className="text-muted">{item.id === 'checks' && checkCounts.total ? `${checkCounts.complete}/${item.count}` : item.count}</span>}
+                {item.countText !== undefined
+                  ? <span className="text-muted">{item.countText}</span>
+                  : item.count !== undefined && <span className="text-muted">{item.count}</span>}
               </Btn>
             ))}
           </div>

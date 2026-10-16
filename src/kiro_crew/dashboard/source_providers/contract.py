@@ -420,6 +420,10 @@ class SourceProviderPlugin(Protocol):
     #       a provider, so `FakeAcmePlugin.search_ref` in
     #       test/test_source_provider_plugin.py is the reference implementation.
     #   async def fetch_check_status(self, ref: SourceRef) -> dict[str, str]
+    #       The sidebar chip's status: `ci` and `state`, plus `ciPending: "1"`
+    #       when `ci` is "failed" while checks are still in flight. The full
+    #       payload projects that marker from `checks`, so a plugin that omits
+    #       it disagrees with its own full read on every chip refresh.
     #   async def comment(self, ref: SourceRef, body: str) -> None
     #   async def resolve_thread(self, ref: SourceRef, thread_id: str,
     #                            *, resolved: bool) -> None
