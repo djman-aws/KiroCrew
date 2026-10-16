@@ -44,8 +44,12 @@ def _js_truthy(value: Any) -> bool:
         return False
     if isinstance(value, (dict, list)):
         return True
-    if isinstance(value, (int, float)):
+    if isinstance(value, float):
         return not math.isnan(value) and value != 0
+    if isinstance(value, int):
+        # An int, never ``math.isnan``: JSON integers are unbounded in Python,
+        # and one past the float range overflows the conversion.
+        return value != 0
     if isinstance(value, str):
         return value != ""
     return True

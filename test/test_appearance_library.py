@@ -944,6 +944,38 @@ class TestImportNamesALottieThePlayerWillRefuse:
             assert resp.status == 200, await resp.json()
             assert "warnings" not in await resp.json()
 
+    @pytest.mark.asyncio
+    async def test_an_integer_past_the_float_range_warns_rather_than_failing(self):
+        """JSON integers are unbounded in Python; ``math.isnan`` on one past the
+        float range overflows. The import must still answer 200 with the warning."""
+        clip = (
+            '{"v": "5.7.4", "fr": 24, "ip": 0, "op": 48, "layers": [], "fonts": {"list": [{"fFamily": "X", "fPath": 1'
+            + "0" * 400
+            + "}]}}"
+        )
+        async with TestClient(TestServer(_app())) as client:
+            resp = await client.post(
+                "/api/appearances/import", json={"bundle": self._bundle("huge", clip)}
+            )
+            assert resp.status == 200, await resp.text()
+            body = await resp.json()
+        assert len(body["warnings"]) == 1
+        assert "idle.json" in body["warnings"][0]
+
+    @pytest.mark.asyncio
+    async def test_the_warning_is_judged_before_the_pack_is_written(self, monkeypatch):
+        """A failure inside the check must leave nothing installed, so a retry is
+        not refused by the id guard for a pack the caller was told failed."""
+
+        def boom(_payload):
+            raise RuntimeError("check failed")
+
+        monkeypatch.setattr(shared, "bundle_remote_asset_warnings", boom)
+        clip = self._lottie()
+        with pytest.raises(RuntimeError):
+            await shared.import_pack(self._bundle("never", clip))
+        assert not shared.get_appearance_store().pack_exists("never")
+
     def test_only_referenced_lottie_clips_are_judged_once_each(self):
         """A carried clip no slot names is never played, so it says nothing; a clip
         many slots name is one warning, not one per slot."""

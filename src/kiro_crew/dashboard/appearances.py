@@ -435,11 +435,12 @@ async def import_pack(payload: object) -> dict:
         problem = bundle_reference_error(payload)
         if problem is not None:
             return {"ok": False, "error": problem}
+        # Judged BEFORE the write, so nothing this check raises can follow a
+        # pack that is already installed (a retry would then hit the id guard).
+        remote = bundle_remote_asset_warnings(payload)
         result = import_bundle(store, payload)
-        if result.get("ok"):
-            remote = bundle_remote_asset_warnings(payload)
-            if remote:
-                result["warnings"] = [*result.get("warnings", []), *remote]
+        if result.get("ok") and remote:
+            result["warnings"] = [*result.get("warnings", []), *remote]
         return result
 
     store = await asyncio.to_thread(get_appearance_store)
