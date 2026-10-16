@@ -138,7 +138,7 @@
  1 test_dashboard_files_onloop_fs.py
  2 test_dashboard_member_assignment.py
  1 test_dashboard_slowloris.py
- 8 test_dashboard_source_link_unlink.py
+ 8 test_dashboard_source_link_unlink_publication.py
 12 test_dashboard_state_ws.py
  2 test_dashboard_status_snapshot.py
  1 test_decisions_compaction_hook.py
