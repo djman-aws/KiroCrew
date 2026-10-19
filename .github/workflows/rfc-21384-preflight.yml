@@ -1,0 +1,138 @@
+name: RFC 21384 isolated preflight
+
+on:
+  push:
+    branches: [validation/rfc-21384-preflight-20261019]
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-preflight:
+    name: Publication gate ${{ matrix.gate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        gate: [54, 55]
+    env:
+      PREFLIGHT_HEAD: b415fd3463307f4c49f9d0f6c1c5770c6a2176dc
+      PREFLIGHT_BASE: 3e39e7a9639ebf01e65e54b7c4e68c1d4abd4c21
+      PREFLIGHT_GATE: ${{ matrix.gate }}
+      PREFLIGHT_EVIDENCE: /tmp/rfc-21384-preflight
+      BLACK_NUM_WORKERS: "4"
+      PYTEST_XDIST_AUTO_NUM_WORKERS: "4"
+      MUT_JOBS: "4"
+    steps:
+      - name: Check out the reviewed RFC commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: b415fd3463307f4c49f9d0f6c1c5770c6a2176dc
+          fetch-depth: 2
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify the exact reviewed source and authoritative base
+        run: |
+          test "$(git rev-parse HEAD)" = "$PREFLIGHT_HEAD"
+          test "$(git rev-parse HEAD^)" = "$PREFLIGHT_BASE"
+          git update-ref refs/remotes/origin/main "$PREFLIGHT_BASE"
+          test "$(git merge-base HEAD origin/main)" = "$PREFLIGHT_BASE"
+          mkdir -p "$PREFLIGHT_EVIDENCE"
+          python3 src/kiro_crew/builtin_skills/kirocrew-dev/kirocrew-prepare-pr/scripts/resolve_profile.py \
+            . "$PREFLIGHT_BASE" > "$PREFLIGHT_EVIDENCE/profile.json"
+          git diff --name-only "$PREFLIGHT_BASE" HEAD > "$PREFLIGHT_EVIDENCE/changed-files.txt"
+          git status --porcelain > "$PREFLIGHT_EVIDENCE/status-before.txt"
+
+      - name: Install the frontend's locked dependencies
+        run: npm ci --prefix website --no-audit --no-fund
+
+      - name: Set up the frontend generator's Python dependencies
+        if: matrix.gate == 55
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            setup.cfg
+
+      - name: Install the frontend generator
+        if: matrix.gate == 55
+        run: uv pip install --system -e . --group dev
+
+      - name: Build and stage the frontend for related tests
+        if: matrix.gate == 55
+        run: |
+          npm --prefix website run build
+          python3 -m kiro_crew.frontend stage .
+
+      - name: Install the render gate's Chromium
+        if: matrix.gate == 54
+        working-directory: website
+        run: npx playwright install chromium
+
+      - name: Run the unchanged publication gate
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import time
+
+          evidence = Path(os.environ["PREFLIGHT_EVIDENCE"])
+          profile = json.loads((evidence / "profile.json").read_text())
+          gate = int(os.environ["PREFLIGHT_GATE"])
+          assert len(profile["gates"]) == 61
+          assert gate in (54, 55)
+          command = profile["gates"][gate]
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          base = subprocess.check_output(["git", "merge-base", "HEAD", "origin/main"], text=True).strip()
+          assert head == os.environ["PREFLIGHT_HEAD"]
+          assert base == os.environ["PREFLIGHT_BASE"]
+          result = {
+              "head": head,
+              "base": base,
+              "gate": gate,
+              "command": command,
+              "started": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+          }
+          print(f"Running unchanged gate {gate}: {command}", flush=True)
+          start = time.monotonic()
+          with (evidence / f"gate-{gate}.log").open("w") as output:
+              completed = subprocess.run(
+                  command, shell=True, executable="/bin/bash",
+                  stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+              )
+          result["seconds"] = round(time.monotonic() - start, 3)
+          result["exit_code"] = completed.returncode
+          result["head_unchanged"] = (
+              subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() == head
+          )
+          (evidence / f"gate-{gate}.json").write_text(json.dumps(result, indent=2) + "\n")
+          print(json.dumps(result, indent=2))
+          print("\n".join((evidence / f"gate-{gate}.log").read_text(errors="replace").splitlines()[-35:]))
+          sys.exit(completed.returncode if result["head_unchanged"] else 1)
+          PY
+
+      - name: Save the qualification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rfc-21384-gate-${{ matrix.gate }}
+          path: /tmp/rfc-21384-preflight/
+          if-no-files-found: error
+          retention-days: 7
